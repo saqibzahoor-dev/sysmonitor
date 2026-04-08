@@ -42,8 +42,12 @@ pub fn create_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         ],
     )?;
 
+    // Use the app's default icon for the tray
+    let icon = app.default_window_icon().cloned().expect("app should have a default icon");
+
     TrayIconBuilder::new()
         .tooltip("NetMonitor - Network Monitor")
+        .icon(icon)
         .menu(&menu)
         .on_menu_event(move |app, event| {
             let window = match app.get_webview_window("main") {

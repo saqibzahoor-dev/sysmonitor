@@ -48,9 +48,16 @@ pub fn save_settings(settings: &AppSettings) -> Result<(), String> {
 
 /// Count ESTABLISHED TCP connections on non-loopback interfaces
 pub fn get_active_connections() -> u32 {
-    let output = std::process::Command::new("netstat")
-        .args(["-n", "-p", "TCP"])
-        .output();
+    let mut cmd = std::process::Command::new("netstat");
+    cmd.args(["-n", "-p", "TCP"]);
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+
+    let output = cmd.output();
 
     match output {
         Ok(out) => {
