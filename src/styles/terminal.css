@@ -1,0 +1,122 @@
+/* Scanline overlay */
+.scanlines::after {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0, 0, 0, 0.1) 2px,
+        rgba(0, 0, 0, 0.1) 4px
+    );
+    pointer-events: none;
+    z-index: 9999;
+}
+
+/* Text glow effect */
+.glow {
+    text-shadow: var(--glow-text);
+}
+
+/* Blinking cursor */
+.cursor::after {
+    content: '\2588';
+    animation: blink 1s step-end infinite;
+    color: var(--text-green);
+    margin-left: 2px;
+}
+
+@keyframes blink {
+    50% { opacity: 0; }
+}
+
+/* Terminal prompt style */
+.prompt {
+    color: var(--text-cyan);
+    font-weight: 700;
+}
+
+.prompt-cmd {
+    color: var(--text-green);
+}
+
+/* Separator line */
+.separator {
+    border: none;
+    border-top: 1px solid var(--border-green);
+    margin: 4px 0;
+    box-shadow: var(--glow-green);
+}
+
+/* Value labels */
+.label {
+    color: var(--text-dim);
+    min-width: 80px;
+    display: inline-block;
+    font-weight: 700;
+}
+
+.value {
+    color: var(--text-green);
+    text-shadow: var(--glow-text);
+}
+
+.value.warning {
+    color: var(--text-orange);
+    text-shadow: 0 0 8px #ff660040;
+}
+
+.value.error {
+    color: var(--text-red);
+    text-shadow: 0 0 8px #ff004040;
+}
+
+/* Signal bar */
+.signal-filled {
+    color: var(--text-green);
+}
+
+.signal-empty {
+    color: var(--text-dim);
+}
+
+/* Tab content area */
+.tab-content {
+    padding: 8px 12px;
+    height: calc(380px - 32px - 28px);
+    overflow-y: auto;
+}
+
+/* Data row */
+.data-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 2px 0;
+    align-items: center;
+}
+
+/* Event log */
+.event-log {
+    margin-top: 4px;
+    max-height: 110px;
+    overflow-y: auto;
+}
+
+.event-entry {
+    font-size: 11px;
+    color: var(--text-dim);
+    padding: 1px 0;
+}
+
+.event-time {
+    color: var(--text-cyan);
+    margin-right: 8px;
+}
+
+.prompt-line {
+    padding-bottom: 4px;
+}

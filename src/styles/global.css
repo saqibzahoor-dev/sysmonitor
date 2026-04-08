@@ -1,0 +1,61 @@
+@font-face {
+    font-family: 'JetBrains Mono';
+    src: url('/fonts/JetBrainsMono-Regular.woff2') format('woff2');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'JetBrains Mono';
+    src: url('/fonts/JetBrainsMono-Bold.woff2') format('woff2');
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+}
+
+:root {
+    --bg-primary: #0d1117;
+    --bg-secondary: #161b22;
+    --text-green: #00ff41;
+    --text-cyan: #00d4ff;
+    --text-orange: #ff6600;
+    --text-red: #ff0040;
+    --text-dim: #4a5568;
+    --border-green: #00ff4140;
+    --glow-green: 0 0 10px #00ff4120, 0 0 20px #00ff4110;
+    --glow-text: 0 0 8px #00ff4140;
+    --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html, body {
+    width: 420px;
+    height: 380px;
+    overflow: hidden;
+    background: var(--bg-primary);
+    color: var(--text-green);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.5;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+::-webkit-scrollbar {
+    width: 4px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--bg-primary);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--text-green);
+    border-radius: 2px;
+}
