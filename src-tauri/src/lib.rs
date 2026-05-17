@@ -445,27 +445,25 @@ pub fn run() {
             start_monitoring(handle.clone());
 
             // ===== COMPACT BAR VISIBILITY SENTINEL =====
-            // Polls every 400ms. The compact window uses WS_EX_TOOLWINDOW
-            // (Tauri's skipTaskbar: true). Windows AUTO-HIDES tool windows
-            // when certain shell UI activates — Start Menu, Action Center,
-            // Win+D ("Show Desktop"), some fullscreen activations. The
-            // hidden window also loses its TopMost z-order while hidden.
+            // Two layers of defense against the bar disappearing:
             //
-            // This sentinel:
-            //   1. Reads the user's chosen display_mode from settings
-            //   2. If mode is compact_float/compact_appbar but window is hidden
-            //      (Windows hid it for us) → call show() to reveal it again
-            //   3. Always re-asserts set_always_on_top(true)
-            //   4. If size was somehow collapsed below the minimums, restore
+            // 1) Apply WS_EX_NOACTIVATE one time (done below in setup). This
+            //    prevents the window from EVER becoming the active foreground
+            //    window when clicked. Windows' tool-window auto-hide behavior
+            //    on shell activation is triggered by the activation chain, so
+            //    a window that can never activate doesn't get auto-hidden.
             //
-            // Critically, it does NOT auto-show if the user chose tray_only
-            // or full mode — only revives compact_* modes.
+            // 2) 100ms-polled sentinel that re-asserts visibility + topmost.
+            //    Belt and suspenders — if anything still slips through the
+            //    NOACTIVATE defense, the bar reappears within 100ms (visually
+            //    instant). Reads display_mode and only restores for compact
+            //    modes — respects tray_only/full.
             const MIN_W: u32 = 200;
             const MIN_H: u32 = 24;
             let h_pin = handle.clone();
             tauri::async_runtime::spawn(async move {
                 loop {
-                    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
                     let mode = settings::load_settings().display_mode;
                     let should_be_visible =
                         mode == "compact_float" || mode == "compact_appbar";
@@ -474,7 +472,6 @@ pub fn run() {
                     }
                     let Some(c) = h_pin.get_webview_window("compact") else { continue };
 
-                    // If Windows hid us (Start menu, etc), force back into view
                     if !c.is_visible().unwrap_or(true) {
                         let _ = c.show();
                     }
@@ -491,6 +488,22 @@ pub fn run() {
                     }
                 }
             });
+
+            // Apply WS_EX_NOACTIVATE to the compact window once at startup.
+            // Has to wait a beat for the window to fully exist + be styled
+            // by Tauri before our flags stick.
+            #[cfg(target_os = "windows")]
+            {
+                let h_style = handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                    if let Some(c) = h_style.get_webview_window("compact") {
+                        if let Ok(hwnd) = c.hwnd() {
+                            appbar::apply_widget_styles(hwnd.0 as isize);
+                        }
+                    }
+                });
+            }
 
             // Apply the saved display mode (defaults to compact_appbar on first run)
             let h_init = handle.clone();
