@@ -28,16 +28,16 @@
         "label": "compact",
         "title": "SysMonitor Compact",
         "url": "/compact",
-        "width": 360,
-        "height": 30,
+        "width": 460,
+        "height": 28,
         "decorations": false,
         "alwaysOnTop": true,
         "transparent": false,
-        "resizable": false,
+        "resizable": true,
         "skipTaskbar": true,
         "visible": true,
-        "x": 0,
-        "y": 0
+        "x": 8,
+        "y": 8
       }
     ],
     "security": {
@@ -48,6 +48,10 @@
     "active": true,
     "targets": ["nsis", "msi"],
     "externalBin": ["binaries/sysmon-sensor"],
+    "resources": [
+      "binaries/LibreHardwareMonitorLib.dll",
+      "binaries/HidSharp.dll"
+    ],
     "publisher": "saqib",
     "shortDescription": "Real-time PC monitoring widget",
     "longDescription": "SysMonitor — compact PC monitoring widget showing CPU, RAM, GPU, network, processes, and hardware inventory.",

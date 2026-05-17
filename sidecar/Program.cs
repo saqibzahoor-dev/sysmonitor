@@ -52,18 +52,24 @@ namespace SysmonSensor
                         {
                             if (hw.HardwareType == HardwareType.Cpu)
                             {
+                                // Pick the hottest temperature sensor among Package/CCD/Tctl/Tdie/Core
+                                // (AMD: Tctl/Tdie/CCD1, Intel: Package, generic: Core #).
+                                // Ignore 0 values — those mean the sensor is present but unreadable
+                                // (often a permissions issue requiring admin for AMD CPUs).
+                                float? maxTemp = null;
                                 foreach (var s in hw.Sensors)
                                 {
-                                    if (s.SensorType == SensorType.Temperature &&
-                                        (s.Name.Contains("Package") || s.Name.Contains("CCD1") || s.Name.Contains("Tctl")))
+                                    if (s.SensorType == SensorType.Temperature && s.Value.HasValue && s.Value.Value > 0.5f)
                                     {
-                                        if (cpuTemp == null) cpuTemp = s.Value;
+                                        if (!maxTemp.HasValue || s.Value.Value > maxTemp.Value)
+                                            maxTemp = s.Value.Value;
                                     }
                                     if (s.SensorType == SensorType.Power && s.Name.Contains("Package"))
                                     {
                                         if (cpuPower == null) cpuPower = s.Value;
                                     }
                                 }
+                                cpuTemp = maxTemp;
                             }
                             else if (hw.HardwareType == HardwareType.GpuAmd ||
                                      hw.HardwareType == HardwareType.GpuNvidia ||

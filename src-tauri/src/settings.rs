@@ -51,7 +51,7 @@ pub struct AppSettings {
     pub compact_y: f64,
 }
 
-fn default_display_mode() -> String { "compact_appbar".to_string() }
+fn default_display_mode() -> String { "compact_float".to_string() }
 fn default_appbar_edge() -> String { "top".to_string() }
 fn default_temp_unit() -> String { "c".to_string() }
 fn default_true() -> bool { true }
@@ -159,9 +159,9 @@ mod tests {
     }
 
     #[test]
-    fn default_display_mode_is_compact_appbar() {
+    fn default_display_mode_is_compact_float() {
         let s = AppSettings::default();
-        assert_eq!(s.display_mode, "compact_appbar");
+        assert_eq!(s.display_mode, "compact_float");
     }
 
     #[test]
@@ -182,7 +182,7 @@ mod tests {
           "start_on_boot":false,"selected_tab":"speed"
         }"#;
         let s: AppSettings = serde_json::from_str(v1_json).expect("must deserialize");
-        assert_eq!(s.display_mode, "compact_appbar");
+        assert_eq!(s.display_mode, "compact_float");
         assert_eq!(s.appbar_edge, "top");
         assert_eq!(s.temp_unit, "c");
         assert_eq!(s.warning_thresholds.cpu_pct, 80);

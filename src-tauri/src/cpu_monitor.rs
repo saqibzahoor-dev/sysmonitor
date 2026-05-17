@@ -6,6 +6,9 @@ pub struct CpuStats {
     pub usage: f32,
     pub per_core: Vec<f32>,
     pub freq_mhz: u64,
+    /// Temperature in °C. None when no sensor is readable (e.g. AMD desktop
+    /// without admin, sidecar offline, or hardware without thermal sensors).
+    pub temp_c: Option<f32>,
 }
 
 pub struct CpuMonitor {
@@ -27,7 +30,7 @@ impl CpuMonitor {
         let per_core: Vec<f32> = cpus.iter().map(|c| c.cpu_usage()).collect();
         let usage = average(&per_core);
         let freq_mhz = cpus.first().map(|c| c.frequency()).unwrap_or(0);
-        CpuStats { usage, per_core, freq_mhz }
+        CpuStats { usage, per_core, freq_mhz, temp_c: None }
     }
 }
 
@@ -60,10 +63,18 @@ mod tests {
 
     #[test]
     fn stats_serialize_to_json() {
-        let stats = CpuStats { usage: 12.5, per_core: vec![10.0, 15.0], freq_mhz: 4500 };
+        let stats = CpuStats { usage: 12.5, per_core: vec![10.0, 15.0], freq_mhz: 4500, temp_c: Some(58.5) };
         let json = serde_json::to_string(&stats).unwrap();
         assert!(json.contains("\"usage\":12.5"));
         assert!(json.contains("\"freq_mhz\":4500"));
+        assert!(json.contains("\"temp_c\":58.5"));
+    }
+
+    #[test]
+    fn stats_serialize_null_temp() {
+        let stats = CpuStats { usage: 0.0, per_core: vec![], freq_mhz: 0, temp_c: None };
+        let json = serde_json::to_string(&stats).unwrap();
+        assert!(json.contains("\"temp_c\":null"));
     }
 
     #[test]

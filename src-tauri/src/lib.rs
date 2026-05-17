@@ -1,6 +1,7 @@
 pub mod appbar;
 pub mod corner_position;
 pub mod cpu_monitor;
+pub mod cpu_temp;
 pub mod disk_monitor;
 pub mod event_logger;
 pub mod gpu_monitor;
@@ -270,7 +271,7 @@ fn start_monitoring(app: AppHandle) {
             );
             let events = state.event_log.lock().unwrap().get_events();
 
-            let cpu = state.cpu.lock().unwrap().poll();
+            let mut cpu = state.cpu.lock().unwrap().poll();
             let mem = state.mem.lock().unwrap().poll();
             let disk = state.disk.lock().unwrap().poll();
             let proc = state.proc.lock().unwrap().poll(10);
@@ -280,6 +281,16 @@ fn start_monitoring(app: AppHandle) {
                 .available
                 .load(std::sync::atomic::Ordering::Relaxed);
             let gpu = gpu_monitor::read(&state.lhm.reading, available);
+
+            // CPU temperature: prefer sidecar reading, fall back to WMI thermal zone
+            cpu.temp_c = state
+                .lhm
+                .reading
+                .lock()
+                .unwrap()
+                .as_ref()
+                .and_then(|r| r.cpu.temp_c)
+                .or_else(cpu_temp::read_cpu_temp_c);
 
             let update = SystemUpdate {
                 speed,
