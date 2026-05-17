@@ -1,12 +1,12 @@
 [package]
-name = "netmonitor"
-version = "1.0.0"
-description = "Real-time network speed monitor widget"
+name = "sysmonitor"
+version = "2.0.0"
+description = "Real-time PC monitoring widget"
 authors = ["saqib"]
 edition = "2021"
 
 [lib]
-name = "netmonitor_lib"
+name = "sysmonitor_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

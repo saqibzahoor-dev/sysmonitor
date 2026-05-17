@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "NetMonitor",
-  "version": "1.0.0",
-  "identifier": "com.netmonitor.app",
+  "productName": "SysMonitor",
+  "version": "2.0.0",
+  "identifier": "com.sysmonitor.app",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,9 +12,10 @@
   "app": {
     "windows": [
       {
-        "title": "NetMonitor",
+        "label": "main",
+        "title": "SysMonitor",
         "width": 420,
-        "height": 380,
+        "height": 440,
         "decorations": false,
         "alwaysOnTop": true,
         "transparent": false,
