@@ -27,7 +27,7 @@ impl Default for AppSettings {
 
 fn settings_path() -> PathBuf {
     let app_data = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
-    let dir = app_data.join("netmonitor");
+    let dir = app_data.join("sysmonitor");
     fs::create_dir_all(&dir).ok();
     dir.join("settings.json")
 }
@@ -95,5 +95,13 @@ mod tests {
         let parsed: AppSettings = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.position_preset, settings.position_preset);
         assert_eq!(parsed.always_on_top, settings.always_on_top);
+    }
+
+    #[test]
+    fn test_settings_folder_is_sysmonitor() {
+        let path = settings_path();
+        let parent = path.parent().expect("settings path must have parent");
+        let folder_name = parent.file_name().unwrap().to_string_lossy();
+        assert_eq!(folder_name, "sysmonitor");
     }
 }

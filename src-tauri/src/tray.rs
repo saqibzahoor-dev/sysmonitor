@@ -23,7 +23,7 @@ pub fn create_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let always_on_top =
         MenuItem::with_id(app, "always_on_top", "Always on Top", true, None::<&str>)?;
     let sep2 = PredefinedMenuItem::separator(app)?;
-    let about = MenuItem::with_id(app, "about", "About NetMonitor", true, None::<&str>)?;
+    let about = MenuItem::with_id(app, "about", "About SysMonitor", true, None::<&str>)?;
     let sep3 = PredefinedMenuItem::separator(app)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
 
@@ -46,7 +46,7 @@ pub fn create_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let icon = app.default_window_icon().cloned().expect("app should have a default icon");
 
     TrayIconBuilder::new()
-        .tooltip("NetMonitor - Network Monitor")
+        .tooltip("SysMonitor - PC Monitoring Widget")
         .icon(icon)
         .menu(&menu)
         .on_menu_event(move |app, event| {
