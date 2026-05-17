@@ -59,67 +59,75 @@ pub fn start(app: &AppHandle, bridge: &LhmBridge) {
     let available = bridge.available.clone();
     let restart_count = bridge.restart_count.clone();
 
-    std::thread::spawn(move || loop {
-        if restart_count.load(Ordering::Relaxed) >= MAX_RESTARTS {
-            available.store(false, Ordering::Relaxed);
-            return;
-        }
-
-        let sidecar = match app.shell().sidecar("sysmon-sensor") {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("sidecar creation failed: {e}");
+    // CRITICAL: must run in Tauri's async runtime (which IS a tokio runtime).
+    // The earlier std::thread::spawn + futures::executor::block_on combo
+    // failed because tokio's mpsc receiver requires a tokio runtime context;
+    // outside one, recv() returns Pending forever and we never see Stdout
+    // events. Result was: sidecar process ran fine, but the bridge thread
+    // sat blocked waiting for events that could never arrive.
+    tauri::async_runtime::spawn(async move {
+        loop {
+            if restart_count.load(Ordering::Relaxed) >= MAX_RESTARTS {
                 available.store(false, Ordering::Relaxed);
                 return;
             }
-        };
 
-        let (mut rx, _child) = match sidecar.spawn() {
-            Ok(p) => p,
-            Err(e) => {
-                eprintln!("sidecar spawn failed: {e}");
-                restart_count.fetch_add(1, Ordering::Relaxed);
-                std::thread::sleep(std::time::Duration::from_millis(RESTART_DELAY_MS));
-                continue;
-            }
-        };
+            let sidecar = match app.shell().sidecar("sysmon-sensor") {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("sidecar creation failed: {e}");
+                    available.store(false, Ordering::Relaxed);
+                    return;
+                }
+            };
 
-        let mut got_any = false;
-        let mut buf = String::new();
+            let (mut rx, _child) = match sidecar.spawn() {
+                Ok(p) => p,
+                Err(e) => {
+                    eprintln!("sidecar spawn failed: {e}");
+                    restart_count.fetch_add(1, Ordering::Relaxed);
+                    tokio::time::sleep(std::time::Duration::from_millis(RESTART_DELAY_MS)).await;
+                    continue;
+                }
+            };
 
-        while let Some(event) = futures::executor::block_on(rx.recv()) {
-            match event {
-                CommandEvent::Stdout(bytes) => {
-                    if let Ok(s) = std::str::from_utf8(&bytes) {
-                        buf.push_str(s);
-                        while let Some(idx) = buf.find('\n') {
-                            let line: String = buf.drain(..=idx).collect();
-                            if let Some(r) = parse_line(&line) {
-                                got_any = true;
-                                *reading.lock().unwrap() = Some(r);
+            let mut got_any = false;
+            let mut buf = String::new();
+
+            while let Some(event) = rx.recv().await {
+                match event {
+                    CommandEvent::Stdout(bytes) => {
+                        if let Ok(s) = std::str::from_utf8(&bytes) {
+                            buf.push_str(s);
+                            while let Some(idx) = buf.find('\n') {
+                                let line: String = buf.drain(..=idx).collect();
+                                if let Some(r) = parse_line(&line) {
+                                    got_any = true;
+                                    *reading.lock().unwrap() = Some(r);
+                                }
                             }
                         }
                     }
-                }
-                CommandEvent::Stderr(bytes) => {
-                    if let Ok(s) = std::str::from_utf8(&bytes) {
-                        eprintln!("sidecar stderr: {}", s.trim_end());
+                    CommandEvent::Stderr(bytes) => {
+                        if let Ok(s) = std::str::from_utf8(&bytes) {
+                            eprintln!("sidecar stderr: {}", s.trim_end());
+                        }
                     }
-                }
-                CommandEvent::Terminated(payload) => {
-                    eprintln!("sidecar terminated (code={:?})", payload.code);
-                    if got_any {
-                        restart_count.store(0, Ordering::Relaxed);
-                    } else {
-                        restart_count.fetch_add(1, Ordering::Relaxed);
+                    CommandEvent::Terminated(payload) => {
+                        eprintln!("sidecar terminated (code={:?})", payload.code);
+                        if got_any {
+                            restart_count.store(0, Ordering::Relaxed);
+                        } else {
+                            restart_count.fetch_add(1, Ordering::Relaxed);
+                        }
+                        break;
                     }
-                    break;
+                    _ => {}
                 }
-                _ => {}
             }
-        }
 
-        std::thread::sleep(std::time::Duration::from_millis(RESTART_DELAY_MS));
+            tokio::time::sleep(std::time::Duration::from_millis(RESTART_DELAY_MS)).await;
+        }
     });
 }
 

@@ -258,6 +258,9 @@ fn set_display_mode(app: AppHandle, mode: String) -> Result<(), String> {
                     }
                 }
                 c.show().ok();
+                // Re-assert always-on-top — Windows may demote frameless
+                // windows when other topmost windows (taskbar/start menu) gain focus
+                c.set_always_on_top(true).ok();
                 c.set_focus().ok();
             }
         }

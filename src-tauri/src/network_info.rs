@@ -17,6 +17,19 @@ pub struct NetworkInfoCollector {
     last_public_ip_fetch: std::time::Instant,
 }
 
+/// Strip parenthetical suffix from an IP address string.
+/// Windows `ipconfig /all` reports the local IP as
+/// `192.168.0.104(Preferred)` (or `Duplicate`, `Deprecated`, etc).
+/// We want just `192.168.0.104`.
+pub fn clean_ip_value(raw: &str) -> String {
+    raw.trim()
+        .split('(')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_string()
+}
+
 fn new_hidden_command(program: &str) -> Command {
     let mut cmd = Command::new(program);
     #[cfg(target_os = "windows")]
@@ -137,12 +150,7 @@ impl NetworkInfoCollector {
 
             if line_trimmed.contains("IPv4 Address") || line_trimmed.contains("IPv4") {
                 if let Some(val) = line_trimmed.split(':').last() {
-                    ip = val
-                        .trim()
-                        .trim_start_matches('(')
-                        .trim_end_matches(')')
-                        .trim()
-                        .to_string();
+                    ip = clean_ip_value(val);
                 }
             }
             if line_trimmed.contains("Default Gateway") && !line_trimmed.ends_with(':') {
@@ -225,5 +233,32 @@ mod tests {
         assert!(info.ssid.is_empty());
         assert!(info.local_ip.is_empty());
         assert!(info.signal_percent.is_none());
+    }
+
+    #[test]
+    fn clean_ip_strips_preferred_suffix() {
+        assert_eq!(clean_ip_value("192.168.0.104(Preferred)"), "192.168.0.104");
+    }
+
+    #[test]
+    fn clean_ip_strips_other_suffixes() {
+        assert_eq!(clean_ip_value("10.0.0.5(Duplicate)"), "10.0.0.5");
+        assert_eq!(clean_ip_value("172.16.1.2(Deprecated)"), "172.16.1.2");
+    }
+
+    #[test]
+    fn clean_ip_handles_no_suffix() {
+        assert_eq!(clean_ip_value("192.168.0.104"), "192.168.0.104");
+    }
+
+    #[test]
+    fn clean_ip_trims_whitespace() {
+        assert_eq!(clean_ip_value("   192.168.0.104   "), "192.168.0.104");
+        assert_eq!(clean_ip_value(" 192.168.0.104(Preferred) "), "192.168.0.104");
+    }
+
+    #[test]
+    fn clean_ip_handles_empty() {
+        assert_eq!(clean_ip_value(""), "");
     }
 }
