@@ -59,7 +59,8 @@
       "nsis": {
         "installMode": "currentUser",
         "displayLanguageSelector": false,
-        "languages": ["English"]
+        "languages": ["English"],
+        "installerHooks": "./installer-hooks.nsh"
       }
     },
     "icon": [
