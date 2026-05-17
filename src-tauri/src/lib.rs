@@ -444,18 +444,33 @@ pub fn run() {
             // Start the per-second monitoring loop
             start_monitoring(handle.clone());
 
-            // Defensive: re-assert always-on-top for the compact window every
-            // 3 seconds. Windows can demote frameless TopMost windows when
-            // other TopMost windows (taskbar, start menu, fullscreen apps)
-            // grab focus. SysMonitor's compact bar should stay visible above
-            // everything until the user explicitly hides it.
+            // Defensive: every second, enforce that the compact window is
+            //   - always-on-top (Windows can demote frameless TopMost)
+            //   - at least MIN_W × MIN_H pixels (guards against any code path
+            //     that ever sets a smaller size and makes it invisible)
+            // The historical bug: CompactBar.svelte's $effect re-ran fitWindow
+            // on every system-update; WebView throttled rAF during focus
+            // changes; layout measure returned 0; setSize(4, 0) made the
+            // window invisible. Defense in depth: bounce back here too.
+            const MIN_W: u32 = 200;
+            const MIN_H: u32 = 24;
             let h_pin = handle.clone();
             tauri::async_runtime::spawn(async move {
                 loop {
-                    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                     if let Some(c) = h_pin.get_webview_window("compact") {
-                        if c.is_visible().unwrap_or(false) {
-                            let _ = c.set_always_on_top(true);
+                        // Always re-assert TopMost
+                        let _ = c.set_always_on_top(true);
+
+                        // If window got collapsed to invisible size, restore
+                        if let Ok(size) = c.outer_size() {
+                            if size.width < MIN_W || size.height < MIN_H {
+                                let new_w = size.width.max(440);
+                                let new_h = size.height.max(28);
+                                let _ = c.set_size(tauri::PhysicalSize::new(new_w, new_h));
+                                // make sure it's still shown
+                                let _ = c.show();
+                            }
                         }
                     }
                 }

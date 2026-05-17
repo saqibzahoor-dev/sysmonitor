@@ -44,14 +44,29 @@
     /** @type {HTMLDivElement|undefined} */
     let barEl;
 
-    // Auto-fit window width to content. Runs on mount and whenever the content
-    // changes (CPU temp may pop in/out, IP may go from -- to value, etc).
+    // Minimum dimensions — never shrink the window smaller than this.
+    // Critical because Svelte/WebView layout can momentarily return 0 from
+    // scrollWidth/scrollHeight during focus transitions (the WebView throttles
+    // rAF when our window loses focus). Without this guard, setSize(W, 0)
+    // collapses the window to ZERO HEIGHT — bar becomes invisible, and the
+    // periodic re-fit ($effect on data updates) used to keep doing it forever.
+    const MIN_W = 200;
+    const MIN_H = 24;
+
+    /**
+     * @param {number} w @param {number} h
+     * @returns {boolean} true if this size is safe to apply
+     */
+    function isSafeSize(w, h) {
+        return Number.isFinite(w) && Number.isFinite(h) && w >= MIN_W && h >= MIN_H;
+    }
+
     async function fitWindow() {
         if (!barEl) return;
         await tick();
-        // measure content
-        const w = Math.ceil(barEl.scrollWidth) + 4; // small breathing room
+        const w = Math.ceil(barEl.scrollWidth) + 4;
         const h = Math.ceil(barEl.scrollHeight);
+        if (!isSafeSize(w, h)) return; // refuse to make the window invisible
         try {
             const win = getCurrentWebviewWindow();
             await win.setSize(new LogicalSize(w, h));
@@ -61,16 +76,12 @@
     }
 
     onMount(() => {
-        // Run twice: once after first paint (DOM measured), once 200ms later
-        // (Tauri WebView sometimes needs an extra beat to honor setSize)
+        // Fit ONCE after first paint + one retry. Never re-fit on data updates
+        // (was: $effect that re-fired every second on cpuTemp/ip change — but
+        // that's also when WebView measure could return 0 during focus changes,
+        // causing setSize(4, 0) → invisible window).
         requestAnimationFrame(() => fitWindow());
-        setTimeout(() => fitWindow(), 250);
-    });
-
-    // Re-fit when content visibly changes
-    $effect(() => {
-        void cpuTemp; void ip; void gpu?.name;
-        requestAnimationFrame(() => fitWindow());
+        setTimeout(() => fitWindow(), 400);
     });
 </script>
 
@@ -108,6 +119,7 @@
         align-items: center;
         gap: 6px;
         height: 26px;
+        min-width: 320px;            /* never collapse to invisible */
         padding: 1px 6px 1px 8px;
         font-family: var(--font-mono, 'JetBrains Mono', 'Consolas', monospace);
         font-size: 11px;
