@@ -48,10 +48,10 @@
     "active": true,
     "targets": ["nsis", "msi"],
     "externalBin": ["binaries/sysmon-sensor"],
-    "resources": [
-      "binaries/LibreHardwareMonitorLib.dll",
-      "binaries/HidSharp.dll"
-    ],
+    "resources": {
+      "binaries/LibreHardwareMonitorLib.dll": "./LibreHardwareMonitorLib.dll",
+      "binaries/HidSharp.dll": "./HidSharp.dll"
+    },
     "publisher": "saqib",
     "shortDescription": "Real-time PC monitoring widget",
     "longDescription": "SysMonitor — compact PC monitoring widget showing CPU, RAM, GPU, network, processes, and hardware inventory.",

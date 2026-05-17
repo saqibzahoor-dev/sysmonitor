@@ -96,6 +96,14 @@
                     <div class="line">{d.model ?? '—'} <span class="dim">— {gb(d.capacity_bytes)} [{d.interface_type ?? '?'}] · {d.health ?? '?'}</span></div>
                 {/each}
             </section>
+
+            <section>
+                <div class="hdr">NETWORK ADAPTERS ({info.network_adapters?.length ?? 0})</div>
+                {#each (info.network_adapters ?? []) as n}
+                    <div class="line">{n.name ?? '—'} <span class="dim">[{n.kind ?? '?'}]{n.speed_mbps ? ` · ${n.speed_mbps} Mbps` : ''}</span></div>
+                    <div class="line dim">MAC {n.mac ?? '—'}</div>
+                {/each}
+            </section>
         {/if}
     </div>
 </div>

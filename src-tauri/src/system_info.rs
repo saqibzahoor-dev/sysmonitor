@@ -8,6 +8,15 @@ pub struct SystemInfo {
     pub ram: Vec<RamStick>,
     pub gpus: Vec<GpuInfo>,
     pub drives: Vec<DriveInfo>,
+    pub network_adapters: Vec<NetAdapter>,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct NetAdapter {
+    pub name: Option<String>,
+    pub mac: Option<String>,
+    pub speed_mbps: Option<u64>,
+    pub kind: Option<String>, // "Ethernet" | "Wireless" | "Bluetooth" | other
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -258,7 +267,51 @@ fn collect_windows() -> SystemInfo {
             })
             .collect();
     }
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "PascalCase")]
+    struct Na {
+        name: Option<String>,
+        #[serde(rename = "MACAddress")]
+        mac_address: Option<String>,
+        speed: Option<u64>,
+        adapter_type: Option<String>,
+    }
+    if let Ok(rows) = conn.raw_query::<Na>(
+        "SELECT Name, MACAddress, Speed, AdapterType FROM Win32_NetworkAdapter",
+    ) {
+        info.network_adapters = rows
+            .into_iter()
+            .filter(|n| {
+                n.mac_address
+                    .as_ref()
+                    .map(|s| !s.trim().is_empty())
+                    .unwrap_or(false)
+            })
+            .map(|n| NetAdapter {
+                name: n.name,
+                mac: n.mac_address,
+                speed_mbps: n.speed.map(|s| s / 1_000_000),
+                kind: n.adapter_type.map(|s| classify_adapter_type(&s)),
+            })
+            .collect();
+    }
     info
+}
+
+pub fn classify_adapter_type(s: &str) -> String {
+    let lc = s.to_lowercase();
+    if lc.contains("802.11") || lc.contains("wireless") || lc.contains("wi-fi") || lc.contains("wifi") {
+        "Wireless".to_string()
+    } else if lc.contains("ethernet") || lc.contains("802.3") {
+        "Ethernet".to_string()
+    } else if lc.contains("bluetooth") {
+        "Bluetooth".to_string()
+    } else if lc.contains("tunnel") {
+        "Tunnel".to_string()
+    } else {
+        s.to_string()
+    }
 }
 
 pub fn memory_type_name(code: u32) -> String {
@@ -298,6 +351,34 @@ mod tests {
     #[test]
     fn memory_type_unknown_code() {
         assert_eq!(memory_type_name(999), "Type 999");
+    }
+
+    #[test]
+    fn classify_ethernet() {
+        assert_eq!(classify_adapter_type("Ethernet 802.3"), "Ethernet");
+        assert_eq!(classify_adapter_type("ethernet"), "Ethernet");
+    }
+
+    #[test]
+    fn classify_wireless() {
+        assert_eq!(classify_adapter_type("802.11 Wireless"), "Wireless");
+        assert_eq!(classify_adapter_type("Wi-Fi"), "Wireless");
+        assert_eq!(classify_adapter_type("WiFi"), "Wireless");
+    }
+
+    #[test]
+    fn classify_bluetooth() {
+        assert_eq!(classify_adapter_type("Bluetooth PAN"), "Bluetooth");
+    }
+
+    #[test]
+    fn classify_tunnel() {
+        assert_eq!(classify_adapter_type("Tunnel"), "Tunnel");
+    }
+
+    #[test]
+    fn classify_unknown_passes_through() {
+        assert_eq!(classify_adapter_type("Loopback"), "Loopback");
     }
 
     #[test]

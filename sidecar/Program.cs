@@ -1,6 +1,8 @@
 using System;
 using System.Globalization;
 using System.IO;
+using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Threading;
 using LibreHardwareMonitor.Hardware;
 
@@ -20,8 +22,39 @@ namespace SysmonSensor
 
     internal static class Program
     {
+        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+        private static extern bool SetDllDirectory(string lpPathName);
+
         private static int Main()
         {
+            // Defensive: also search the 'binaries' subfolder for native deps
+            // (covers installations where Tauri places DLLs in binaries/ rather
+            // than next to the sidecar exe).
+            try
+            {
+                var exeDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) ?? ".";
+                SetDllDirectory(Path.Combine(exeDir, "binaries"));
+
+                // .NET assembly resolver: also load managed DLLs from same folders
+                AppDomain.CurrentDomain.AssemblyResolve += (sender, args) =>
+                {
+                    var name = new AssemblyName(args.Name).Name + ".dll";
+                    foreach (var dir in new[] { exeDir, Path.Combine(exeDir, "binaries") })
+                    {
+                        var path = Path.Combine(dir, name);
+                        if (File.Exists(path))
+                        {
+                            try { return Assembly.LoadFrom(path); } catch { }
+                        }
+                    }
+                    return null;
+                };
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine("dll-path setup failed: " + ex.Message);
+            }
+
             var computer = new Computer
             {
                 IsCpuEnabled = true,

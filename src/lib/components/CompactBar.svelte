@@ -61,13 +61,16 @@
     }
 
     onMount(() => {
-        fitWindow();
+        // Run twice: once after first paint (DOM measured), once 200ms later
+        // (Tauri WebView sometimes needs an extra beat to honor setSize)
+        requestAnimationFrame(() => fitWindow());
+        setTimeout(() => fitWindow(), 250);
     });
 
     // Re-fit when content visibly changes
     $effect(() => {
         void cpuTemp; void ip; void gpu?.name;
-        fitWindow();
+        requestAnimationFrame(() => fitWindow());
     });
 </script>
 
@@ -95,7 +98,8 @@
         margin: 0;
         padding: 0;
         height: 100%;
-        background: transparent;
+        width: 100%;
+        background: var(--bg-primary, #0d1117);
         overflow: hidden;
     }
 
