@@ -1,27 +1,49 @@
 <script>
     import { getCurrentWindow } from '@tauri-apps/api/window';
     import { LogicalPosition } from '@tauri-apps/api/dpi';
+    import { invoke } from '@tauri-apps/api/core';
 
     let { visible = $bindable(false), x = 0, y = 0 } = $props();
 
     const appWindow = getCurrentWindow();
+    const isCompact = appWindow.label === 'compact';
 
-    async function setPosition(pos) {
-        const monitor = await appWindow.currentMonitor();
-        if (!monitor) return;
-        const { width, height } = monitor.size;
-        const scale = monitor.scaleFactor;
-        const sw = width / scale;
-        const sh = height / scale;
-        const positions = {
-            'top-left': { x: 10, y: 10 },
-            'top-right': { x: sw - 430, y: 10 },
-            'bottom-left': { x: 10, y: sh - 390 - 48 },
-            'bottom-right': { x: sw - 430, y: sh - 390 - 48 },
-        };
-        const p = positions[pos];
-        if (p) await appWindow.setPosition(new LogicalPosition(p.x, p.y));
-        visible = false;
+    /** @param {'top-left'|'top-right'|'bottom-left'|'bottom-right'} corner */
+    async function setPosition(corner) {
+        if (isCompact) {
+            // Compact bar: defer to Rust which knows the real window size
+            // and computes a proper offset (and persists the choice).
+            try {
+                await invoke('set_compact_position', { corner });
+            } catch (e) {
+                console.error('set_compact_position failed', e);
+            }
+            visible = false;
+            return;
+        }
+        // Full window: compute corner using the actual current window size
+        try {
+            const monitor = await appWindow.currentMonitor();
+            const outer = await appWindow.outerSize();
+            if (!monitor) return;
+            const scale = monitor.scaleFactor;
+            const sw = monitor.size.width / scale;
+            const sh = monitor.size.height / scale;
+            const ww = outer.width / scale;
+            const wh = outer.height / scale;
+            const margin = 8;
+            const taskbarOffset = 48;
+            const positions = {
+                'top-left':     { x: margin,           y: margin },
+                'top-right':    { x: sw - ww - margin, y: margin },
+                'bottom-left':  { x: margin,           y: sh - wh - taskbarOffset - margin },
+                'bottom-right': { x: sw - ww - margin, y: sh - wh - taskbarOffset - margin },
+            };
+            const p = positions[corner];
+            if (p) await appWindow.setPosition(new LogicalPosition(p.x, p.y));
+        } finally {
+            visible = false;
+        }
     }
 
     async function toggleAlwaysOnTop() {
@@ -30,13 +52,17 @@
         visible = false;
     }
 
-    function hide() {
+    async function showFull() {
+        try { await invoke('set_display_mode', { mode: 'full' }); } catch (e) {}
+        visible = false;
+    }
+
+    function hideToTray() {
         appWindow.hide();
         visible = false;
     }
 
     function quit() {
-        // Actually exit the app
         appWindow.close();
     }
 </script>
@@ -46,15 +72,19 @@
     <div class="overlay" onclick={() => visible = false} oncontextmenu={(e) => { e.preventDefault(); visible = false; }}>
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div class="context-menu" style="left: {x}px; top: {y}px" onclick={(e) => e.stopPropagation()}>
-            <button onclick={() => setPosition('top-left')}>{'\u2196'} Top-Left</button>
-            <button onclick={() => setPosition('top-right')}>{'\u2197'} Top-Right</button>
-            <button onclick={() => setPosition('bottom-left')}>{'\u2199'} Bottom-Left</button>
-            <button onclick={() => setPosition('bottom-right')}>{'\u2198'} Bottom-Right</button>
+            <button onclick={() => setPosition('top-left')}>{'↖'} Top-Left</button>
+            <button onclick={() => setPosition('top-right')}>{'↗'} Top-Right</button>
+            <button onclick={() => setPosition('bottom-left')}>{'↙'} Bottom-Left</button>
+            <button onclick={() => setPosition('bottom-right')}>{'↘'} Bottom-Right</button>
             <div class="menu-sep"></div>
-            <button onclick={toggleAlwaysOnTop}>{'\u229E'} Always on Top</button>
-            <button onclick={hide}>{'\u2500'} Hide to Tray</button>
+            <button onclick={toggleAlwaysOnTop}>{'⊞'} Always on Top</button>
+            {#if isCompact}
+                <button onclick={showFull}>{'▢'} Open Full Window</button>
+            {:else}
+                <button onclick={hideToTray}>{'─'} Hide to Tray</button>
+            {/if}
             <div class="menu-sep"></div>
-            <button class="quit" onclick={quit}>{'\u2715'} Quit</button>
+            <button class="quit" onclick={quit}>{'✕'} Quit</button>
         </div>
     </div>
 {/if}
@@ -74,7 +104,7 @@
         background: var(--bg-secondary);
         border: 1px solid var(--text-green);
         box-shadow: 0 0 15px #00ff4130;
-        min-width: 170px;
+        min-width: 180px;
         z-index: 10001;
     }
 

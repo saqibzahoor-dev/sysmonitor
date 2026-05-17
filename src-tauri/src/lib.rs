@@ -444,6 +444,23 @@ pub fn run() {
             // Start the per-second monitoring loop
             start_monitoring(handle.clone());
 
+            // Defensive: re-assert always-on-top for the compact window every
+            // 3 seconds. Windows can demote frameless TopMost windows when
+            // other TopMost windows (taskbar, start menu, fullscreen apps)
+            // grab focus. SysMonitor's compact bar should stay visible above
+            // everything until the user explicitly hides it.
+            let h_pin = handle.clone();
+            tauri::async_runtime::spawn(async move {
+                loop {
+                    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                    if let Some(c) = h_pin.get_webview_window("compact") {
+                        if c.is_visible().unwrap_or(false) {
+                            let _ = c.set_always_on_top(true);
+                        }
+                    }
+                }
+            });
+
             // Apply the saved display mode (defaults to compact_appbar on first run)
             let h_init = handle.clone();
             let saved_mode = settings::load_settings().display_mode;
