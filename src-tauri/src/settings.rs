@@ -42,12 +42,20 @@ pub struct AppSettings {
     pub warning_thresholds: Thresholds,
     #[serde(default = "default_true")]
     pub sidecar_enabled: bool,
+
+    #[serde(default = "default_compact_position")]
+    pub compact_position: String, // last preset chosen: "top-left" | "top-right" | "bottom-left" | "bottom-right" | "custom"
+    #[serde(default)]
+    pub compact_x: f64, // 0.0 means unset; populated after first move
+    #[serde(default)]
+    pub compact_y: f64,
 }
 
 fn default_display_mode() -> String { "compact_appbar".to_string() }
 fn default_appbar_edge() -> String { "top".to_string() }
 fn default_temp_unit() -> String { "c".to_string() }
 fn default_true() -> bool { true }
+fn default_compact_position() -> String { "bottom-left".to_string() }
 
 impl Default for AppSettings {
     fn default() -> Self {
@@ -63,6 +71,9 @@ impl Default for AppSettings {
             temp_unit: default_temp_unit(),
             warning_thresholds: Thresholds::default(),
             sidecar_enabled: true,
+            compact_position: default_compact_position(),
+            compact_x: 0.0,
+            compact_y: 0.0,
         }
     }
 }
@@ -176,6 +187,32 @@ mod tests {
         assert_eq!(s.temp_unit, "c");
         assert_eq!(s.warning_thresholds.cpu_pct, 80);
         assert!(s.sidecar_enabled);
+    }
+
+    #[test]
+    fn default_compact_position_is_bottom_left() {
+        let s = AppSettings::default();
+        assert_eq!(s.compact_position, "bottom-left");
+        assert_eq!(s.compact_x, 0.0);
+        assert_eq!(s.compact_y, 0.0);
+    }
+
+    #[test]
+    fn deserializing_without_compact_fields_uses_defaults() {
+        // Pre-existing v2 settings file from before this feature was added —
+        // missing compact_position, compact_x, compact_y must use serde defaults
+        let json = r#"{
+          "window_x":0.0,"window_y":0.0,
+          "position_preset":"top-right","always_on_top":true,
+          "start_on_boot":false,"selected_tab":"overview",
+          "display_mode":"compact_float","appbar_edge":"top","temp_unit":"c",
+          "warning_thresholds":{"cpu_pct":80,"cpu_temp_c":80,"gpu_temp_c":80,"ram_pct":85,"disk_free_pct":15},
+          "sidecar_enabled":true
+        }"#;
+        let s: AppSettings = serde_json::from_str(json).expect("must deserialize");
+        assert_eq!(s.compact_position, "bottom-left");
+        assert_eq!(s.compact_x, 0.0);
+        assert_eq!(s.compact_y, 0.0);
     }
 
     #[test]

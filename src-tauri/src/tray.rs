@@ -32,6 +32,18 @@ pub fn create_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let position_menu =
         Submenu::with_items(app, "Position (full)", true, &[&pos_tl, &pos_tr, &pos_bl, &pos_br])?;
 
+    // Compact Position submenu — moves the floating compact bar to a corner
+    let cpos_tl = MenuItem::with_id(app, "cpos_tl", "Top-Left", true, None::<&str>)?;
+    let cpos_tr = MenuItem::with_id(app, "cpos_tr", "Top-Right", true, None::<&str>)?;
+    let cpos_bl = MenuItem::with_id(app, "cpos_bl", "Bottom-Left", true, None::<&str>)?;
+    let cpos_br = MenuItem::with_id(app, "cpos_br", "Bottom-Right", true, None::<&str>)?;
+    let compact_position_menu = Submenu::with_items(
+        app,
+        "Compact Position",
+        true,
+        &[&cpos_tl, &cpos_tr, &cpos_bl, &cpos_br],
+    )?;
+
     let always_on_top =
         MenuItem::with_id(app, "always_on_top", "Always on Top", true, None::<&str>)?;
     let retry_sensors =
@@ -49,6 +61,7 @@ pub fn create_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
             &mode_float,
             &mode_tray,
             &sep_modes,
+            &compact_position_menu,
             &position_menu,
             &always_on_top,
             &retry_sensors,
@@ -86,6 +99,10 @@ pub fn create_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                 "retry_sensors" => {
                     app.emit("retry-sensors", ()).ok();
                 }
+                "cpos_tl" => { app.emit("set-compact-position", "top-left").ok(); }
+                "cpos_tr" => { app.emit("set-compact-position", "top-right").ok(); }
+                "cpos_bl" => { app.emit("set-compact-position", "bottom-left").ok(); }
+                "cpos_br" => { app.emit("set-compact-position", "bottom-right").ok(); }
                 "quit" => {
                     app.exit(0);
                 }

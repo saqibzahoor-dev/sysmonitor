@@ -1,4 +1,5 @@
 pub mod appbar;
+pub mod corner_position;
 pub mod cpu_monitor;
 pub mod disk_monitor;
 pub mod event_logger;
@@ -71,6 +72,91 @@ fn get_system_info(state: tauri::State<AppState>) -> system_info::SystemInfo {
     state.sys_info.get_or_collect()
 }
 
+/// Move the compact window to a named corner preset and persist the choice.
+/// Also flips display mode to compact_float so the bar floats wherever you want.
+#[tauri::command]
+fn set_compact_position(app: AppHandle, corner: String) -> Result<(), String> {
+    use tauri::{LogicalPosition, Manager, Position};
+
+    let parsed = corner_position::Corner::from_str(&corner)
+        .ok_or_else(|| format!("unknown corner: {corner}"))?;
+
+    let compact = app
+        .get_webview_window("compact")
+        .ok_or_else(|| "compact window not found".to_string())?;
+
+    // If we're docked as AppBar, unregister first so we can move freely.
+    if let Some(hwnd) = appbar_slot().lock().unwrap().take() {
+        appbar::unregister(hwnd);
+    }
+
+    let monitor = compact
+        .current_monitor()
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "no current monitor".to_string())?;
+    let scale = monitor.scale_factor();
+    let mw = (monitor.size().width as f64 / scale) as i32;
+    let mh = (monitor.size().height as f64 / scale) as i32;
+    let ws = compact.outer_size().map_err(|e| e.to_string())?;
+    let ww = (ws.width as f64 / scale) as i32;
+    let wh = (ws.height as f64 / scale) as i32;
+
+    let taskbar_offset = estimate_taskbar_offset(parsed);
+    let (x, y) = corner_position::compute_corner_position(mw, mh, ww, wh, parsed, taskbar_offset);
+
+    compact
+        .set_position(Position::Logical(LogicalPosition::new(x as f64, y as f64)))
+        .map_err(|e| e.to_string())?;
+    compact.show().ok();
+
+    // Switch UI semantics to floating so the bar stays where placed
+    if let Some(m) = app.get_webview_window("main") {
+        m.hide().ok();
+    }
+
+    // Persist
+    let mut s = settings::load_settings();
+    s.compact_position = parsed.as_str().to_string();
+    s.compact_x = x as f64;
+    s.compact_y = y as f64;
+    s.display_mode = "compact_float".to_string();
+    settings::save_settings(&s)?;
+    Ok(())
+}
+
+/// Best-effort guess at Windows taskbar height in logical pixels.
+/// Only used for bottom corners; top corners pass 0.
+fn estimate_taskbar_offset(corner: corner_position::Corner) -> i32 {
+    use corner_position::Corner;
+    match corner {
+        Corner::BottomLeft | Corner::BottomRight => 48,
+        Corner::TopLeft | Corner::TopRight => 0,
+    }
+}
+
+/// Persist current compact window position whenever the user drags it.
+#[tauri::command]
+fn save_compact_position(app: AppHandle) -> Result<(), String> {
+    use tauri::Manager;
+    let compact = app
+        .get_webview_window("compact")
+        .ok_or_else(|| "compact window not found".to_string())?;
+    let pos = compact.outer_position().map_err(|e| e.to_string())?;
+    let monitor = compact
+        .current_monitor()
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "no current monitor".to_string())?;
+    let scale = monitor.scale_factor();
+    let lx = pos.x as f64 / scale;
+    let ly = pos.y as f64 / scale;
+
+    let mut s = settings::load_settings();
+    s.compact_x = lx;
+    s.compact_y = ly;
+    s.compact_position = "custom".to_string();
+    settings::save_settings(&s)
+}
+
 #[tauri::command]
 fn set_display_mode(app: AppHandle, mode: String) -> Result<(), String> {
     // Always unregister any existing AppBar first
@@ -114,6 +200,13 @@ fn set_display_mode(app: AppHandle, mode: String) -> Result<(), String> {
                 m.hide().ok();
             }
             if let Some(c) = &compact {
+                // Restore last saved position (if any) before showing
+                let s = settings::load_settings();
+                if s.compact_x != 0.0 || s.compact_y != 0.0 {
+                    use tauri::{LogicalPosition, Position};
+                    c.set_position(Position::Logical(LogicalPosition::new(s.compact_x, s.compact_y)))
+                        .ok();
+                }
                 c.show().ok();
             }
         }
@@ -246,7 +339,9 @@ pub fn run() {
             set_settings,
             get_system_info,
             lhm_bridge::retry_sensors,
-            set_display_mode
+            set_display_mode,
+            set_compact_position,
+            save_compact_position
         ])
         .setup(|app| {
             let handle = app.handle().clone();
@@ -273,6 +368,13 @@ pub fn run() {
                     .lhm
                     .available
                     .store(true, std::sync::atomic::Ordering::Relaxed);
+            });
+
+            // Listen for tray "Compact Position" submenu selections
+            let h_pos = handle.clone();
+            handle.listen("set-compact-position", move |event| {
+                let corner = event.payload().trim_matches('"').to_string();
+                let _ = set_compact_position(h_pos.clone(), corner);
             });
 
             // Start the per-second monitoring loop

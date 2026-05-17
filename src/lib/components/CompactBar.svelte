@@ -26,19 +26,32 @@
             console.error('set_display_mode failed', e);
         }
     }
+
+    // Persist window position when the user finishes dragging.
+    // mouseup fires once per drag end on the drag-region; debounce to coalesce
+    // potential bursts and avoid disk hammering.
+    /** @type {ReturnType<typeof setTimeout>|null} */
+    let saveTimer = null;
+    function scheduleSave() {
+        if (saveTimer) clearTimeout(saveTimer);
+        saveTimer = setTimeout(() => {
+            invoke('save_compact_position').catch(() => {});
+        }, 250);
+    }
 </script>
 
-<div class="bar">
-    <span class="seg {cls(cpu, 80, 95)}">CPU {cpu.toFixed(0)}%
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div class="bar" data-tauri-drag-region onmouseup={scheduleSave}>
+    <span class="seg {cls(cpu, 80, 95)}" data-tauri-drag-region>CPU {cpu.toFixed(0)}%
         {#if cpuTemp != null}<span class="temp {cls(cpuTemp, 80, 90)}">{cpuTemp.toFixed(0)}°C</span>{/if}
     </span>
-    <span class="sep">│</span>
+    <span class="sep" data-tauri-drag-region>│</span>
     <span class="seg {cls(ramPct, 85, 95)}">RAM {ramPct.toFixed(0)}%</span>
-    <span class="sep">│</span>
+    <span class="sep" data-tauri-drag-region>│</span>
     <span class="seg">GPU {gpu?.load_pct != null ? gpu.load_pct.toFixed(0) + '%' : '--'}
         {#if gpuTemp != null}<span class="temp {cls(gpuTemp, 80, 90)}">{gpuTemp.toFixed(0)}°C</span>{/if}
     </span>
-    <span class="sep">│</span>
+    <span class="sep" data-tauri-drag-region>│</span>
     <span class="seg">↓ {formatSpeed(s.speed.download_bps)} ↑ {formatSpeed(s.speed.upload_bps)}</span>
     <button class="expand" onclick={expand} title="Open full window">▣</button>
 </div>
