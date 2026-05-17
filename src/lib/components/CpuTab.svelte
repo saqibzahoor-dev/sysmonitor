@@ -7,6 +7,7 @@
     let freqGhz = $derived(cpu.freq_mhz ? (cpu.freq_mhz / 1000).toFixed(2) : '--');
     let cpuTemp = $derived(s.gpu.sensor_available ? null : null); // CPU temp not yet wired; shows —
 
+    /** @param {number} pct @param {number} [width] */
     function bar(pct, width = 16) {
         if (!pct || pct < 0) pct = 0;
         if (pct > 100) pct = 100;
@@ -14,7 +15,9 @@
         return '█'.repeat(filled) + '░'.repeat(width - filled);
     }
 
+    /** @param {number|null|undefined} pct @param {number} [warn] @param {number} [crit] */
     function tone(pct, warn = 80, crit = 95) {
+        if (pct == null) return '';
         if (pct >= crit) return 'error';
         if (pct >= warn) return 'warning';
         return '';

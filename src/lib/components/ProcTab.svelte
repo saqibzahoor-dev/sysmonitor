@@ -3,14 +3,18 @@
     import { formatDuration } from '../utils/formatting.js';
 
     let s = $derived($system);
+    /** @type {'cpu'|'mem'} */
     let sortKey = $state('cpu');
 
+    /** @type {{pid:number,name:string,cpu_pct:number,mem_bytes:number}[]} */
     let sorted = $derived(
-        [...s.proc.top].sort((a, b) =>
-            sortKey === 'cpu' ? b.cpu_pct - a.cpu_pct : b.mem_bytes - a.mem_bytes
+        /** @type {{pid:number,name:string,cpu_pct:number,mem_bytes:number}[]} */ ([...s.proc.top]).sort(
+            /** @param {{cpu_pct:number,mem_bytes:number}} a @param {{cpu_pct:number,mem_bytes:number}} b */
+            (a, b) => sortKey === 'cpu' ? b.cpu_pct - a.cpu_pct : b.mem_bytes - a.mem_bytes
         ).slice(0, 10)
     );
 
+    /** @param {number} bytes */
     function mb(bytes) {
         return (bytes / (1024 ** 2)).toFixed(0);
     }

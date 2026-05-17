@@ -2,8 +2,10 @@
     import { onMount } from 'svelte';
     import { invoke } from '@tauri-apps/api/core';
 
+    /** @type {any} */
     let info = $state(null);
     let loading = $state(true);
+    /** @type {string|null} */
     let err = $state(null);
 
     async function load() {
@@ -20,10 +22,12 @@
 
     onMount(load);
 
+    /** @param {number|null|undefined} bytes */
     function gb(bytes) {
         return bytes ? (bytes / (1024 ** 3)).toFixed(1) + ' GB' : '—';
     }
 
+    /** @param {string|null|undefined} s */
     function parseWmiDate(s) {
         // WMI dates look like "20260516081402.000000+300" — extract the date portion
         if (!s || typeof s !== 'string') return s || '—';

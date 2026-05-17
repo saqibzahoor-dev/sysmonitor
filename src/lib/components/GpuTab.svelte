@@ -4,6 +4,7 @@
     let s = $derived($system);
     let gpu = $derived(s.gpu);
 
+    /** @param {number|null|undefined} pct @param {number} [width] */
     function bar(pct, width = 22) {
         if (!pct || pct < 0) pct = 0;
         if (pct > 100) pct = 100;
@@ -11,6 +12,7 @@
         return '█'.repeat(filled) + '░'.repeat(width - filled);
     }
 
+    /** @param {number|null|undefined} t @param {number} [warn] @param {number} [crit] */
     function tempTone(t, warn = 80, crit = 90) {
         if (t == null) return '';
         if (t >= crit) return 'error';
@@ -18,6 +20,7 @@
         return '';
     }
 
+    /** @param {number|null|undefined} v */
     function mb(v) {
         if (v == null) return '—';
         return v >= 1024 ? `${(v / 1024).toFixed(1)} GB` : `${v} MB`;

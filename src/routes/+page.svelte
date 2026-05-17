@@ -4,17 +4,22 @@
     import '$lib/../styles/terminal.css';
     import TitleBar from '$lib/components/TitleBar.svelte';
     import TabBar from '$lib/components/TabBar.svelte';
-    import SpeedTab from '$lib/components/SpeedTab.svelte';
-    import NetworkTab from '$lib/components/NetworkTab.svelte';
-    import StatsTab from '$lib/components/StatsTab.svelte';
+    import OverviewTab from '$lib/components/OverviewTab.svelte';
+    import CpuTab from '$lib/components/CpuTab.svelte';
+    import MemTab from '$lib/components/MemTab.svelte';
+    import GpuTab from '$lib/components/GpuTab.svelte';
+    import NetTab from '$lib/components/NetTab.svelte';
+    import ProcTab from '$lib/components/ProcTab.svelte';
+    import SysTab from '$lib/components/SysTab.svelte';
     import ContextMenu from '$lib/components/ContextMenu.svelte';
-    import { initNetworkListener } from '$lib/stores/network.js';
+    import { initSystemListener } from '$lib/stores/system.js';
 
-    let activeTab = $state('speed');
+    let activeTab = $state('overview');
     let menuVisible = $state(false);
     let menuX = $state(0);
     let menuY = $state(0);
 
+    /** @param {MouseEvent} e */
     function handleContextMenu(e) {
         e.preventDefault();
         menuX = e.clientX;
@@ -22,8 +27,12 @@
         menuVisible = true;
     }
 
+    /** @type {(() => void) | null} */
+    let unlistenFn = null;
+
     onMount(() => {
-        initNetworkListener();
+        initSystemListener().then(fn => { unlistenFn = fn; });
+        return () => { if (unlistenFn) unlistenFn(); };
     });
 </script>
 
@@ -32,12 +41,20 @@
     <TitleBar />
     <TabBar bind:activeTab />
 
-    {#if activeTab === 'speed'}
-        <SpeedTab />
-    {:else if activeTab === 'network'}
-        <NetworkTab />
-    {:else if activeTab === 'stats'}
-        <StatsTab />
+    {#if activeTab === 'overview'}
+        <OverviewTab />
+    {:else if activeTab === 'cpu'}
+        <CpuTab />
+    {:else if activeTab === 'mem'}
+        <MemTab />
+    {:else if activeTab === 'gpu'}
+        <GpuTab />
+    {:else if activeTab === 'net'}
+        <NetTab />
+    {:else if activeTab === 'proc'}
+        <ProcTab />
+    {:else if activeTab === 'sys'}
+        <SysTab />
     {/if}
 
     <ContextMenu bind:visible={menuVisible} x={menuX} y={menuY} />
@@ -46,7 +63,7 @@
 <style>
     .app {
         width: 420px;
-        height: 380px;
+        height: 440px;
         border: 1px solid var(--border-green);
         box-shadow: var(--glow-green);
         display: flex;

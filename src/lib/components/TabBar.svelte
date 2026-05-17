@@ -1,10 +1,14 @@
 <script>
-    let { activeTab = $bindable('speed') } = $props();
+    let { activeTab = $bindable('overview') } = $props();
 
     const tabs = [
-        { id: 'speed', label: 'SPEED' },
-        { id: 'network', label: 'NETWORK' },
-        { id: 'stats', label: 'STATS' },
+        { id: 'overview', label: 'OVR' },
+        { id: 'cpu', label: 'CPU' },
+        { id: 'mem', label: 'MEM' },
+        { id: 'gpu', label: 'GPU' },
+        { id: 'net', label: 'NET' },
+        { id: 'proc', label: 'PROC' },
+        { id: 'sys', label: 'SYS' },
     ];
 </script>
 
@@ -23,7 +27,7 @@
 <style>
     .tab-bar {
         display: flex;
-        height: 28px;
+        height: 26px;
         background: var(--bg-primary);
         border-bottom: 1px solid var(--border-green);
         flex-shrink: 0;
@@ -35,11 +39,12 @@
         background: transparent;
         color: var(--text-dim);
         font-family: var(--font-mono);
-        font-size: 12px;
+        font-size: 11px;
         font-weight: 700;
         cursor: pointer;
         transition: all 0.15s;
         letter-spacing: 1px;
+        padding: 0;
     }
 
     .tab:hover {

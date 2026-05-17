@@ -5,9 +5,11 @@
     let s = $derived($system);
     let cpu = $derived(s.cpu.usage);
     let ramPct = $derived(s.mem.total ? (s.mem.used / s.mem.total * 100) : 0);
+    /** @type {any} */
     let gpu = $derived(s.gpu.gpus[0]);
     let gpuTemp = $derived(gpu?.temp_c ?? null);
 
+    /** @param {number} value @param {number} warn @param {number} crit */
     function cls(value, warn, crit) {
         if (value >= crit) return 'crit';
         if (value >= warn) return 'warn';

@@ -7,10 +7,15 @@
     let ramPct = $derived(mem.total ? (mem.used / mem.total * 100) : 0);
     let swapPct = $derived(mem.swap_total ? (mem.swap_used / mem.swap_total * 100) : 0);
 
+    /** @type {{pid:number,name:string,cpu_pct:number,mem_bytes:number}[]} */
     let topRam = $derived(
-        [...s.proc.top].sort((a, b) => b.mem_bytes - a.mem_bytes).slice(0, 5)
+        /** @type {{pid:number,name:string,cpu_pct:number,mem_bytes:number}[]} */ ([...s.proc.top]).sort(
+            /** @param {{mem_bytes:number}} a @param {{mem_bytes:number}} b */
+            (a, b) => b.mem_bytes - a.mem_bytes
+        ).slice(0, 5)
     );
 
+    /** @param {number} pct @param {number} [width] */
     function bar(pct, width = 24) {
         if (!pct || pct < 0) pct = 0;
         if (pct > 100) pct = 100;
@@ -18,12 +23,14 @@
         return '█'.repeat(filled) + '░'.repeat(width - filled);
     }
 
+    /** @param {number} pct @param {number} [warn] @param {number} [crit] */
     function tone(pct, warn = 85, crit = 95) {
         if (pct >= crit) return 'error';
         if (pct >= warn) return 'warning';
         return '';
     }
 
+    /** @param {number} bytes */
     function gb(bytes) {
         return (bytes / (1024 ** 3)).toFixed(2);
     }
