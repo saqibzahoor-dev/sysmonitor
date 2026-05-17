@@ -17,7 +17,7 @@ impl MemoryMonitor {
     pub fn new() -> Self {
         Self {
             sys: System::new_with_specifics(
-                RefreshKind::nothing().with_memory(MemoryRefreshKind::everything()),
+                RefreshKind::new().with_memory(MemoryRefreshKind::everything()),
             ),
         }
     }

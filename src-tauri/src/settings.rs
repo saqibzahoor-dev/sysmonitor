@@ -127,7 +127,7 @@ mod tests {
         assert_eq!(settings.position_preset, "top-right");
         assert!(settings.always_on_top);
         assert!(!settings.start_on_boot);
-        assert_eq!(settings.selected_tab, "speed");
+        assert_eq!(settings.selected_tab, "overview");
     }
 
     #[test]

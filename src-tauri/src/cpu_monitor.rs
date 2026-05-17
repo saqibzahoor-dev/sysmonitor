@@ -15,7 +15,7 @@ pub struct CpuMonitor {
 impl CpuMonitor {
     pub fn new() -> Self {
         let mut sys = System::new_with_specifics(
-            RefreshKind::nothing().with_cpu(CpuRefreshKind::everything()),
+            RefreshKind::new().with_cpu(CpuRefreshKind::everything()),
         );
         sys.refresh_cpu_all();
         Self { sys }

@@ -23,7 +23,7 @@ pub struct ProcessMonitor {
 impl ProcessMonitor {
     pub fn new() -> Self {
         let mut sys = System::new_with_specifics(
-            RefreshKind::nothing().with_processes(ProcessRefreshKind::everything()),
+            RefreshKind::new().with_processes(ProcessRefreshKind::everything()),
         );
         sys.refresh_processes(ProcessesToUpdate::All, true);
         Self { sys }
