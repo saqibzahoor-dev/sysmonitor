@@ -444,33 +444,49 @@ pub fn run() {
             // Start the per-second monitoring loop
             start_monitoring(handle.clone());
 
-            // Defensive: every second, enforce that the compact window is
-            //   - always-on-top (Windows can demote frameless TopMost)
-            //   - at least MIN_W × MIN_H pixels (guards against any code path
-            //     that ever sets a smaller size and makes it invisible)
-            // The historical bug: CompactBar.svelte's $effect re-ran fitWindow
-            // on every system-update; WebView throttled rAF during focus
-            // changes; layout measure returned 0; setSize(4, 0) made the
-            // window invisible. Defense in depth: bounce back here too.
+            // ===== COMPACT BAR VISIBILITY SENTINEL =====
+            // Polls every 400ms. The compact window uses WS_EX_TOOLWINDOW
+            // (Tauri's skipTaskbar: true). Windows AUTO-HIDES tool windows
+            // when certain shell UI activates — Start Menu, Action Center,
+            // Win+D ("Show Desktop"), some fullscreen activations. The
+            // hidden window also loses its TopMost z-order while hidden.
+            //
+            // This sentinel:
+            //   1. Reads the user's chosen display_mode from settings
+            //   2. If mode is compact_float/compact_appbar but window is hidden
+            //      (Windows hid it for us) → call show() to reveal it again
+            //   3. Always re-asserts set_always_on_top(true)
+            //   4. If size was somehow collapsed below the minimums, restore
+            //
+            // Critically, it does NOT auto-show if the user chose tray_only
+            // or full mode — only revives compact_* modes.
             const MIN_W: u32 = 200;
             const MIN_H: u32 = 24;
             let h_pin = handle.clone();
             tauri::async_runtime::spawn(async move {
                 loop {
-                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-                    if let Some(c) = h_pin.get_webview_window("compact") {
-                        // Always re-assert TopMost
-                        let _ = c.set_always_on_top(true);
+                    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+                    let mode = settings::load_settings().display_mode;
+                    let should_be_visible =
+                        mode == "compact_float" || mode == "compact_appbar";
+                    if !should_be_visible {
+                        continue;
+                    }
+                    let Some(c) = h_pin.get_webview_window("compact") else { continue };
 
-                        // If window got collapsed to invisible size, restore
-                        if let Ok(size) = c.outer_size() {
-                            if size.width < MIN_W || size.height < MIN_H {
-                                let new_w = size.width.max(440);
-                                let new_h = size.height.max(28);
-                                let _ = c.set_size(tauri::PhysicalSize::new(new_w, new_h));
-                                // make sure it's still shown
-                                let _ = c.show();
-                            }
+                    // If Windows hid us (Start menu, etc), force back into view
+                    if !c.is_visible().unwrap_or(true) {
+                        let _ = c.show();
+                    }
+                    if c.is_minimized().unwrap_or(false) {
+                        let _ = c.unminimize();
+                    }
+                    let _ = c.set_always_on_top(true);
+
+                    if let Ok(size) = c.outer_size() {
+                        if size.width < MIN_W || size.height < MIN_H {
+                            let _ = c.set_size(tauri::PhysicalSize::new(440u32, 28u32));
+                            let _ = c.show();
                         }
                     }
                 }

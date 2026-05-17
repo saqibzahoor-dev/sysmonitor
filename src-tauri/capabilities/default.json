@@ -21,6 +21,8 @@
     "core:window:allow-set-size",
     "core:window:allow-inner-size",
     "core:window:allow-outer-size",
+    "core:window:allow-is-minimized",
+    "core:window:allow-unminimize",
     {
       "identifier": "shell:allow-execute",
       "allow": [
