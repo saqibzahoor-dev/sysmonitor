@@ -21,7 +21,23 @@
         "transparent": false,
         "resizable": false,
         "skipTaskbar": true,
-        "center": true
+        "center": true,
+        "visible": false
+      },
+      {
+        "label": "compact",
+        "title": "SysMonitor Compact",
+        "url": "/compact",
+        "width": 360,
+        "height": 30,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "transparent": false,
+        "resizable": false,
+        "skipTaskbar": true,
+        "visible": true,
+        "x": 0,
+        "y": 0
       }
     ],
     "security": {
