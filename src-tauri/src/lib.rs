@@ -69,8 +69,13 @@ fn set_settings(new_settings: settings::AppSettings) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn get_system_info(state: tauri::State<AppState>) -> system_info::SystemInfo {
-    state.sys_info.get_or_collect()
+async fn get_system_info() -> Result<system_info::SystemInfo, String> {
+    // Run on a dedicated blocking thread so WMI's COM init succeeds.
+    // The main app thread / Tauri command threads have COM apartment state
+    // (often STA) that conflicts with wmi's MTA requirement.
+    tauri::async_runtime::spawn_blocking(system_info::collect)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Move the compact window to a named corner preset and persist the choice.
@@ -201,14 +206,59 @@ fn set_display_mode(app: AppHandle, mode: String) -> Result<(), String> {
                 m.hide().ok();
             }
             if let Some(c) = &compact {
-                // Restore last saved position (if any) before showing
+                use tauri::{LogicalPosition, Position};
                 let s = settings::load_settings();
-                if s.compact_x != 0.0 || s.compact_y != 0.0 {
-                    use tauri::{LogicalPosition, Position};
-                    c.set_position(Position::Logical(LogicalPosition::new(s.compact_x, s.compact_y)))
+                let restored = (s.compact_x, s.compact_y);
+                let on_screen = if let Ok(Some(monitor)) = c.current_monitor() {
+                    let scale = monitor.scale_factor();
+                    let mw = (monitor.size().width as f64 / scale) as i32;
+                    let mh = (monitor.size().height as f64 / scale) as i32;
+                    let ws = c.outer_size().ok();
+                    let (ww, wh) = ws
+                        .map(|s| (
+                            (s.width as f64 / scale) as i32,
+                            (s.height as f64 / scale) as i32,
+                        ))
+                        .unwrap_or((360, 30));
+                    corner_position::position_is_on_screen(
+                        restored.0, restored.1, ww, wh, mw, mh, 40,
+                    )
+                } else {
+                    false
+                };
+
+                if (restored.0 != 0.0 || restored.1 != 0.0) && on_screen {
+                    c.set_position(Position::Logical(LogicalPosition::new(restored.0, restored.1)))
                         .ok();
+                } else {
+                    // Fall back to the saved corner preset (default bottom-left)
+                    let corner = corner_position::Corner::from_str(&s.compact_position)
+                        .unwrap_or(corner_position::Corner::BottomLeft);
+                    if let Ok(Some(monitor)) = c.current_monitor() {
+                        let scale = monitor.scale_factor();
+                        let mw = (monitor.size().width as f64 / scale) as i32;
+                        let mh = (monitor.size().height as f64 / scale) as i32;
+                        let ws = c.outer_size().ok();
+                        let (ww, wh) = ws
+                            .map(|s| (
+                                (s.width as f64 / scale) as i32,
+                                (s.height as f64 / scale) as i32,
+                            ))
+                            .unwrap_or((360, 30));
+                        let tb = match corner {
+                            corner_position::Corner::BottomLeft
+                            | corner_position::Corner::BottomRight => 48,
+                            _ => 0,
+                        };
+                        let (x, y) = corner_position::compute_corner_position(
+                            mw, mh, ww, wh, corner, tb,
+                        );
+                        c.set_position(Position::Logical(LogicalPosition::new(x as f64, y as f64)))
+                            .ok();
+                    }
                 }
                 c.show().ok();
+                c.set_focus().ok();
             }
         }
         "tray_only" => {

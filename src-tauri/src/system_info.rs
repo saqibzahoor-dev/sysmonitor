@@ -83,16 +83,29 @@ impl SystemInfoCache {
     pub fn get_or_collect(&self) -> SystemInfo {
         let mut guard = self.cached.lock().unwrap();
         if let Some(ref info) = *guard {
-            return info.clone();
+            // Only return cached value if it actually has data — avoids
+            // permanently caching an empty result from a failed COM init.
+            if !is_empty(info) {
+                return info.clone();
+            }
         }
+        drop(guard);
         let info = collect();
-        *guard = Some(info.clone());
+        if !is_empty(&info) {
+            *self.cached.lock().unwrap() = Some(info.clone());
+        }
         info
     }
 
     pub fn invalidate(&self) {
         *self.cached.lock().unwrap() = None;
     }
+}
+
+/// Treat a result as "empty" (= failed collection) if the OS name is missing.
+/// Used to skip caching failed WMI queries so a Refresh actually retries.
+pub fn is_empty(info: &SystemInfo) -> bool {
+    info.os.name.is_none() && info.cpu.name.is_none() && info.ram.is_empty()
 }
 
 pub fn collect() -> SystemInfo {

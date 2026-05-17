@@ -38,6 +38,25 @@ impl Corner {
 
 pub const MARGIN: i32 = 4;
 
+/// Returns true if `(x, y)` plus the widget size still has at least
+/// `min_visible` pixels visible inside the monitor rectangle. Used to detect
+/// stale saved positions that would put the widget off-screen.
+pub fn position_is_on_screen(
+    x: f64,
+    y: f64,
+    widget_width: i32,
+    widget_height: i32,
+    monitor_width: i32,
+    monitor_height: i32,
+    min_visible: i32,
+) -> bool {
+    let right = x + widget_width as f64;
+    let bottom = y + widget_height as f64;
+    let visible_w = right.min(monitor_width as f64) - x.max(0.0);
+    let visible_h = bottom.min(monitor_height as f64) - y.max(0.0);
+    visible_w >= min_visible as f64 && visible_h >= min_visible as f64
+}
+
 /// Compute logical-pixel (x, y) for the widget's top-left corner.
 ///
 /// `taskbar_offset` is subtracted from the bottom for `BottomLeft`/`BottomRight`
@@ -131,6 +150,38 @@ mod tests {
         assert_eq!(Corner::from_str(""), None);
         assert_eq!(Corner::from_str("middle"), None);
         assert_eq!(Corner::from_str("topish-left"), None);
+    }
+
+    #[test]
+    fn on_screen_when_fully_inside() {
+        assert!(position_is_on_screen(100.0, 100.0, 360, 30, 1920, 1080, 20));
+    }
+
+    #[test]
+    fn on_screen_when_partially_clipped_but_visible() {
+        // Widget at x=-50 means 310 of 360 pixels visible — still > 20 px min
+        assert!(position_is_on_screen(-50.0, 100.0, 360, 30, 1920, 1080, 20));
+    }
+
+    #[test]
+    fn off_screen_when_almost_entirely_left() {
+        // Only 10 px visible, less than 20 min
+        assert!(!position_is_on_screen(-350.0, 100.0, 360, 30, 1920, 1080, 20));
+    }
+
+    #[test]
+    fn off_screen_when_y_beyond_bottom() {
+        assert!(!position_is_on_screen(100.0, 1080.0, 360, 30, 1920, 1080, 20));
+    }
+
+    #[test]
+    fn off_screen_when_x_beyond_right() {
+        assert!(!position_is_on_screen(1920.0, 100.0, 360, 30, 1920, 1080, 20));
+    }
+
+    #[test]
+    fn on_screen_at_origin() {
+        assert!(position_is_on_screen(0.0, 0.0, 360, 30, 1920, 1080, 20));
     }
 
     #[test]

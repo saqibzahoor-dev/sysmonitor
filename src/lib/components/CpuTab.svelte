@@ -5,7 +5,7 @@
     let cpu = $derived(s.cpu);
     let cores = $derived(cpu.per_core);
     let freqGhz = $derived(cpu.freq_mhz ? (cpu.freq_mhz / 1000).toFixed(2) : '--');
-    let cpuTemp = $derived(s.gpu.sensor_available ? null : null); // CPU temp not yet wired; shows —
+    let cpuTemp = $derived(s.cpu.temp_c);
 
     /** @param {number} pct @param {number} [width] */
     function bar(pct, width = 16) {

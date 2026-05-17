@@ -31,7 +31,7 @@ const defaultState = {
         peak_download_bps: 0, peak_upload_bps: 0, active_connections: 0,
     },
     events: [],
-    cpu: { usage: 0, per_core: [], freq_mhz: 0 },
+    cpu: { usage: 0, per_core: [], freq_mhz: 0, temp_c: null },
     mem: { used: 0, total: 0, swap_used: 0, swap_total: 0 },
     disk: { disks: [] },
     proc: { top: [], count: 0, uptime_secs: 0 },

@@ -19,15 +19,16 @@
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="title-bar" onmousedown={startDrag}>
     <span class="title glow">
-        <span class="prompt">root@netmon</span>:<span class="prompt-cmd">~</span>$
+        <span class="prompt">root@sysmon</span>:<span class="prompt-cmd">~</span>$
     </span>
-    <div class="controls">
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="controls" onmousedown={(e) => e.stopPropagation()}>
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <span class="ctrl-btn minimize" onclick={(e) => { e.stopPropagation(); minimize(); }} title="Minimize to tray">&ndash;</span>
+        <span class="ctrl-btn minimize" onclick={minimize} title="Minimize to tray">&ndash;</span>
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <span class="ctrl-btn close" onclick={(e) => { e.stopPropagation(); closeWindow(); }} title="Hide to tray">&times;</span>
+        <span class="ctrl-btn close" onclick={closeWindow} title="Hide to tray">&times;</span>
     </div>
 </div>
 
