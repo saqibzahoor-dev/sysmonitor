@@ -17,3 +17,10 @@ src-tauri/binaries/
 sidecar/bin/
 sidecar/obj/
 sidecar/FodyWeavers.xsd
+
+# Dev workflow artifacts — never push to public repo
+docs/superpowers/
+.claude/
+CLAUDE.md
+AGENTS.md
+GEMINI.md
