@@ -46,6 +46,12 @@
         try { await invoke('set_display_mode', { mode: 'full' }); } catch (e) {}
     }
 
+    /** @param {MouseEvent} e */
+    async function onContextMenu(e) {
+        e.preventDefault();
+        try { await invoke('show_compact_menu'); } catch (err) { console.error(err); }
+    }
+
     /** @type {ReturnType<typeof setTimeout>|null} */
     let saveTimer = null;
     function scheduleSave() {
@@ -66,7 +72,6 @@
     async function fitWindow() {
         if (!barEl) return;
         await tick();
-        // Use offsetWidth + the bar's actual outer rect for accurate measurement
         const rect = barEl.getBoundingClientRect();
         const w = Math.ceil(rect.width);
         let h = Math.ceil(rect.height);
@@ -88,60 +93,58 @@
         setTimeout(() => fitWindow(), 800);
     });
 
+    // Re-fit only on label transitions that genuinely change layout width
+    // (uptime "23h 59m" → "1d 0h"). Numeric value changes (3% → 100%) don't
+    // change width because each .m has fixed min-width.
     $effect(() => {
-        void cpu; void cpuTemp; void ramPct; void gpuLoad; void gpuTemp;
-        void procCount; void uptimeStr; void ip;
+        void uptimeStr; void ip;
         requestAnimationFrame(() => fitWindow());
     });
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="bar" data-tauri-drag-region onmouseup={scheduleSave} bind:this={barEl}>
-    <span class="m {tone(cpu, 80, 95)}" data-tauri-drag-region>
+<div class="bar" data-tauri-drag-region onmouseup={scheduleSave} oncontextmenu={onContextMenu} bind:this={barEl}>
+    <span class="m cpu {tone(cpu, 80, 95)}" data-tauri-drag-region>
         <span class="ico">▮</span><span class="lbl">CPU</span>
         <span class="val">{cpu.toFixed(0)}<span class="u">%</span></span>
-        {#if cpuTemp != null}
-            <span class="t {tone(cpuTemp, 80, 90)}">{cpuTemp.toFixed(0)}°</span>
-        {/if}
+        <span class="t {tone(cpuTemp, 80, 90)}">{cpuTemp != null ? cpuTemp.toFixed(0) + '°' : '—'}</span>
     </span>
 
-    <span class="m {tone(ramPct, 85, 95)}" data-tauri-drag-region>
+    <span class="m ram {tone(ramPct, 85, 95)}" data-tauri-drag-region>
         <span class="ico">▤</span><span class="lbl">RAM</span>
         <span class="val">{ramPct.toFixed(0)}<span class="u">%</span></span>
         <span class="t">{ramUsedGb}<span class="u">G</span></span>
     </span>
 
-    <span class="m" data-tauri-drag-region>
+    <span class="m gpu" data-tauri-drag-region>
         <span class="ico">◈</span><span class="lbl">GPU</span>
         <span class="val">{gpuLoad != null ? gpuLoad.toFixed(0) : '—'}<span class="u">%</span></span>
-        {#if gpuTemp != null}
-            <span class="t {tone(gpuTemp, 80, 90)}">{gpuTemp.toFixed(0)}°</span>
-        {/if}
+        <span class="t {tone(gpuTemp, 80, 90)}">{gpuTemp != null ? gpuTemp.toFixed(0) + '°' : '—'}</span>
     </span>
 
-    <span class="m" data-tauri-drag-region>
+    <span class="m disk" data-tauri-drag-region>
         <span class="ico">≡</span><span class="lbl">DISK</span>
         <span class="val sm">{formatBytes(diskBps)}<span class="u">/s</span></span>
     </span>
 
-    <span class="m" data-tauri-drag-region>
+    <span class="m net" data-tauri-drag-region>
         <span class="ico down">▼</span><span class="lbl">NET</span>
         <span class="val sm">{formatSpeed(s.speed.download_bps)}</span>
         <span class="ico up">▲</span>
         <span class="val sm">{formatSpeed(s.speed.upload_bps)}</span>
     </span>
 
-    <span class="m" data-tauri-drag-region>
+    <span class="m proc" data-tauri-drag-region>
         <span class="ico">⌨</span><span class="lbl">PROC</span>
         <span class="val sm">{procCount}</span>
     </span>
 
-    <span class="m" data-tauri-drag-region>
+    <span class="m up" data-tauri-drag-region>
         <span class="ico">⏱</span><span class="lbl">UP</span>
         <span class="val sm">{uptimeStr}</span>
     </span>
 
-    <span class="m" data-tauri-drag-region>
+    <span class="m ip" data-tauri-drag-region>
         <span class="ico">◉</span><span class="lbl">IP</span>
         <span class="val sm ip-text">{ip}</span>
     </span>
@@ -161,12 +164,17 @@
         width: 100%;
         background: var(--bg-primary, #0d1117);
         overflow: hidden;
+        /* Flex-center the bar inside the body so it centers in AppBar
+           mode (when window is wider than content). In compact_float
+           mode the window already snaps to bar width so this is a no-op. */
+        display: flex;
+        align-items: center;
+        justify-content: center;
     }
 
     .bar {
-        /* inline-flex so width shrinks to content; window setSize matches */
         display: inline-flex;
-        align-items: center;       /* vertical centering for ALL children incl. button */
+        align-items: center;
         gap: 0;
         height: 100%;
         min-height: 26px;
@@ -178,11 +186,10 @@
         background: var(--bg-primary, #0d1117);
         border-top: 1px solid rgba(0, 255, 65, 0.35);
         border-bottom: 1px solid rgba(0, 255, 65, 0.35);
-        border-radius: 0;          /* no corners, sharp edges */
+        border-radius: 0;
         user-select: none;
         white-space: nowrap;
         box-sizing: border-box;
-        /* tabular numbers so percentages don't shift width when digits change */
         font-variant-numeric: tabular-nums;
     }
 
@@ -190,14 +197,27 @@
         display: inline-flex;
         align-items: center;
         gap: 4px;
-        padding: 0 12px;
+        padding: 0 10px;
         white-space: nowrap;
         letter-spacing: 0.2px;
         height: 100%;
         position: relative;
+        /* IMPORTANT: fixed min-widths so values changing digit count
+           (e.g. CPU 8% → CPU 100%) never shift other segments. Each
+           width sized for the maximum reasonable content of that metric. */
+        justify-content: flex-start;
     }
+    /* Per-metric minimum widths — sized to max content + small breathing room */
+    .m.cpu  { min-width: 108px; }   /* CPU 100% 99° */
+    .m.ram  { min-width: 122px; }   /* RAM 100% 99.9G */
+    .m.gpu  { min-width: 108px; }   /* GPU 100% 99° */
+    .m.disk { min-width: 110px; }   /* DISK 999 MB/s */
+    .m.net  { min-width: 192px; }   /* ▼ NET 999 Kb/s ▲ 999 Kb/s */
+    .m.proc { min-width:  84px; }   /* PROC 9999 */
+    .m.up   { min-width:  98px; }   /* UP 99d 23h */
+    .m.ip   { min-width: 156px; }   /* IP 255.255.255.255 */
 
-    /* Thin vertical divider between metrics — 1px hairline in dim green */
+    /* 1px hairline divider between metrics */
     .m + .m::before {
         content: "";
         position: absolute;
@@ -255,7 +275,6 @@
         margin-left: 3px;
     }
 
-    /* Threshold colors */
     .m.warn .val, .m.warn .ico, .m.warn .lbl, .m.warn .u { color: var(--text-orange, #ff6600); }
     .m.warn .lbl { opacity: 1; }
     .m.crit .val, .m.crit .ico, .m.crit .lbl, .m.crit .u { color: var(--text-red, #ff0040); }
@@ -268,15 +287,14 @@
         opacity: 0.95;
     }
 
-    /* Expand button — square, vertically centered, hairline border */
     .expand {
-        align-self: center;          /* centers vertically in bar */
+        align-self: center;
         display: inline-flex;
         align-items: center;
         justify-content: center;
         width: 18px;
         height: 18px;
-        margin: 0 8px 0 4px;
+        margin: 0 8px 0 6px;
         padding: 0;
         background: transparent;
         border: 1px solid rgba(0, 255, 65, 0.45);
@@ -290,7 +308,5 @@
         color: var(--bg-primary, #0d1117);
         border-color: var(--text-green, #00ff41);
     }
-    .expand svg {
-        display: block;
-    }
+    .expand svg { display: block; }
 </style>

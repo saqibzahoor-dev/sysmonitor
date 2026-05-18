@@ -1,4 +1,5 @@
 pub mod appbar;
+pub mod compact_menu;
 pub mod corner_position;
 pub mod cpu_monitor;
 pub mod cpu_temp;
@@ -161,6 +162,43 @@ fn save_compact_position(app: AppHandle) -> Result<(), String> {
     s.compact_y = ly;
     s.compact_position = "custom".to_string();
     settings::save_settings(&s)
+}
+
+/// Show a NATIVE OS-level context menu on right-click of the compact bar.
+/// The previous in-page Svelte menu got clipped because the compact window
+/// is only ~28px tall; a native menu is rendered by the OS and isn't
+/// constrained by the window's client area at all.
+///
+/// Event handling is global (see `.on_menu_event` in run()) — the same
+/// handler that drives tray menu items also drives these popup items,
+/// dispatched by ID.
+#[tauri::command]
+fn show_compact_menu(app: AppHandle) -> Result<(), String> {
+    use tauri::menu::{ContextMenu, MenuBuilder, MenuItemBuilder, PredefinedMenuItem};
+    use tauri::Manager;
+
+    let webview = app
+        .get_webview_window("compact")
+        .ok_or_else(|| "compact window not found".to_string())?;
+
+    let layout = compact_menu::compact_menu_layout();
+    let mut builder = MenuBuilder::new(&app);
+    for entry in &layout {
+        builder = match entry {
+            compact_menu::MenuEntry::Item(id, label) => builder.item(
+                &MenuItemBuilder::with_id(*id, *label)
+                    .build(&app)
+                    .map_err(|e| e.to_string())?,
+            ),
+            compact_menu::MenuEntry::Separator => builder.item(
+                &PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?,
+            ),
+        };
+    }
+    let menu = builder.build().map_err(|e| e.to_string())?;
+
+    webview.popup_menu(&menu).map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -379,6 +417,32 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
+        // App-wide menu event handler — fires for both tray menu and any
+        // popup menus (compact bar's right-click). Dispatches by ID to the
+        // same event names the tray menu already uses.
+        .on_menu_event(|app, event| {
+            use tauri::Manager;
+            match event.id.as_ref() {
+                "cpos_tl" => { app.emit("set-compact-position", "top-left").ok(); }
+                "cpos_tr" => { app.emit("set-compact-position", "top-right").ok(); }
+                "cpos_bl" => { app.emit("set-compact-position", "bottom-left").ok(); }
+                "cpos_br" => { app.emit("set-compact-position", "bottom-right").ok(); }
+                "mode_full" => { app.emit("set-mode", "full").ok(); }
+                "mode_appbar" => { app.emit("set-mode", "compact_appbar").ok(); }
+                "mode_float" => { app.emit("set-mode", "compact_float").ok(); }
+                "mode_tray" => { app.emit("set-mode", "tray_only").ok(); }
+                "retry_sensors" => { app.emit("retry-sensors", ()).ok(); }
+                "always_on_top" => {
+                    if let Some(c) = app.get_webview_window("compact") {
+                        if let Ok(cur) = c.is_always_on_top() {
+                            let _ = c.set_always_on_top(!cur);
+                        }
+                    }
+                }
+                "quit" => { app.exit(0); }
+                _ => {}
+            }
+        })
         .manage(AppState {
             net_monitor: Mutex::new(network_monitor::NetworkMonitor::new()),
             ping_monitor: Mutex::new(ping_monitor::PingMonitor::new()),
@@ -405,7 +469,8 @@ pub fn run() {
             lhm_bridge::retry_sensors,
             set_display_mode,
             set_compact_position,
-            save_compact_position
+            save_compact_position,
+            show_compact_menu
         ])
         .setup(|app| {
             let handle = app.handle().clone();
