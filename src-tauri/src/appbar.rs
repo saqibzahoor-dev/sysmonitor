@@ -118,27 +118,42 @@ pub fn unregister(_: isize) -> bool {
     false
 }
 
-/// Apply WS_EX_NOACTIVATE to a window — prevents it from becoming the
-/// active foreground window when clicked. Critical for widget-style overlay
-/// windows: with it set, shell activations (Start Menu, Alt-Tab, Win+D,
-/// fullscreen activation) don't trigger Windows' "hide tool windows behind
-/// active app" behavior because our window never participates in activation
-/// in the first place. Clicks still work; drag-region still works.
+/// Apply WS_EX_NOACTIVATE + force sharp (non-rounded) corners to a window.
+/// - NOACTIVATE prevents the window from becoming foreground (immune to
+///   shell-activation auto-hide for Start menu / Win+D etc).
+/// - DwmSetWindowAttribute(DWMWCP_DONOTROUND) overrides Windows 11's
+///   default rounded corners. Without this, the OS draws rounded corners
+///   on the window frame regardless of any CSS border-radius value.
+/// Clicks and data-tauri-drag-region still work after these flags.
 #[cfg(target_os = "windows")]
 pub fn apply_widget_styles(hwnd_isize: isize) {
     use windows::Win32::Foundation::HWND;
+    use windows::Win32::Graphics::Dwm::{
+        DwmSetWindowAttribute, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND,
+    };
     use windows::Win32::UI::WindowsAndMessaging::{
         GetWindowLongPtrW, SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
         WS_EX_TOPMOST,
     };
     unsafe {
         let hwnd = HWND(hwnd_isize as *mut _);
+
+        // 1) Extended styles: NOACTIVATE + TOOLWINDOW + TOPMOST
         let cur = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
         let add = (WS_EX_NOACTIVATE.0 | WS_EX_TOOLWINDOW.0 | WS_EX_TOPMOST.0) as isize;
         let new = cur | add;
         if new != cur {
             SetWindowLongPtrW(hwnd, GWL_EXSTYLE, new);
         }
+
+        // 2) Disable Windows 11's default rounded corners (DWM)
+        let pref: i32 = DWMWCP_DONOTROUND.0;
+        let _ = DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_WINDOW_CORNER_PREFERENCE,
+            &pref as *const i32 as *const _,
+            std::mem::size_of::<i32>() as u32,
+        );
     }
 }
 
