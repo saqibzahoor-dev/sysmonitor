@@ -35,6 +35,7 @@ const defaultState = {
     mem: { used: 0, total: 0, swap_used: 0, swap_total: 0 },
     disk: { disks: [] },
     proc: { top: [], count: 0, uptime_secs: 0 },
+    disk: { disks: [] },
     gpu: { gpus: [], sensor_available: true },
 };
 

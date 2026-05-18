@@ -83,6 +83,17 @@ pub fn delta_bps(prev: u64, curr: u64, interval_ms: u64) -> u64 {
     ((curr - prev) * 1000) / interval_ms
 }
 
+/// Sum read+write throughput across all drives. Useful for the compact bar
+/// which shows total disk activity rather than per-drive numbers.
+pub fn total_throughput_bps(disks: &[DiskEntry]) -> u64 {
+    disks.iter().map(|d| d.read_bps + d.write_bps).sum()
+}
+
+/// Sum free space across all drives in bytes.
+pub fn total_free_bytes(disks: &[DiskEntry]) -> u64 {
+    disks.iter().map(|d| d.free).sum()
+}
+
 #[cfg(target_os = "windows")]
 fn read_disk_io_wmi() -> Option<HashMap<String, (u64, u64)>> {
     use serde::Deserialize;
@@ -154,5 +165,26 @@ mod tests {
         #[cfg(target_os = "windows")]
         assert!(!stats.disks.is_empty(), "Windows must have at least C:");
         let _ = stats;
+    }
+
+    fn entry(read: u64, write: u64, free: u64, total: u64) -> DiskEntry {
+        DiskEntry { name: "X".into(), mount: "X:\\".into(), read_bps: read, write_bps: write, free, total }
+    }
+
+    #[test]
+    fn total_throughput_sums_read_plus_write() {
+        let disks = vec![entry(1000, 500, 0, 0), entry(2000, 1500, 0, 0)];
+        assert_eq!(total_throughput_bps(&disks), 5000);
+    }
+
+    #[test]
+    fn total_throughput_empty_is_zero() {
+        assert_eq!(total_throughput_bps(&[]), 0);
+    }
+
+    #[test]
+    fn total_free_sums_across_drives() {
+        let disks = vec![entry(0, 0, 100, 1000), entry(0, 0, 200, 2000)];
+        assert_eq!(total_free_bytes(&disks), 300);
     }
 }
