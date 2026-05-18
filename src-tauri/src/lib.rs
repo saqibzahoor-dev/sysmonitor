@@ -481,9 +481,17 @@ pub fn run() {
                     let _ = c.set_always_on_top(true);
 
                     if let Ok(size) = c.outer_size() {
+                        // Snap back if too small (bug guard)
                         if size.width < MIN_W || size.height < MIN_H {
-                            let _ = c.set_size(tauri::PhysicalSize::new(440u32, 28u32));
+                            let _ = c.set_size(tauri::LogicalSize::new(620u32, 28u32));
                             let _ = c.show();
+                        }
+                        // Snap back if too tall (window grew beyond bar height somehow)
+                        const MAX_H_PHYS: u32 = 120;
+                        if size.height > MAX_H_PHYS {
+                            // Preserve width, force height down to 28 logical
+                            let w_logical = (size.width as f64 / 1.0).max(620.0) as u32;
+                            let _ = c.set_size(tauri::LogicalSize::new(w_logical, 28u32));
                         }
                     }
                 }
