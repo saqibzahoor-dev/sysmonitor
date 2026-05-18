@@ -21,7 +21,8 @@
     );
     let procCount = $derived(s.proc?.count ?? 0);
     let uptimeStr = $derived(formatUptime(s.proc?.uptime_secs ?? 0));
-    let ip = $derived(s.net_info.local_ip || '—');
+    let lanIp = $derived(s.net_info.local_ip || '—');
+    let wanIp = $derived(s.net_info.public_ip || '…');
 
     /** @param {number} secs */
     function formatUptime(secs) {
@@ -97,7 +98,7 @@
     // (uptime "23h 59m" → "1d 0h"). Numeric value changes (3% → 100%) don't
     // change width because each .m has fixed min-width.
     $effect(() => {
-        void uptimeStr; void ip;
+        void uptimeStr; void lanIp; void wanIp;
         requestAnimationFrame(() => fitWindow());
     });
 </script>
@@ -144,9 +145,14 @@
         <span class="val sm">{uptimeStr}</span>
     </span>
 
-    <span class="m ip" data-tauri-drag-region>
-        <span class="ico">◉</span><span class="lbl">IP</span>
-        <span class="val sm ip-text">{ip}</span>
+    <span class="m ip" data-tauri-drag-region title="LAN IP (this PC on your local network)">
+        <span class="ico">⌂</span><span class="lbl">LAN</span>
+        <span class="val sm ip-text">{lanIp}</span>
+    </span>
+
+    <span class="m wan" data-tauri-drag-region title="WAN IP (what the public internet sees — your router/ISP)">
+        <span class="ico">◉</span><span class="lbl">WAN</span>
+        <span class="val sm ip-text">{wanIp}</span>
     </span>
 
     <button class="expand" onclick={expand} title="Open full window" aria-label="Open full window">
@@ -215,7 +221,8 @@
     .m.net  { min-width: 192px; }   /* ▼ NET 999 Kb/s ▲ 999 Kb/s */
     .m.proc { min-width:  84px; }   /* PROC 9999 */
     .m.up   { min-width:  98px; }   /* UP 99d 23h */
-    .m.ip   { min-width: 156px; }   /* IP 255.255.255.255 */
+    .m.ip   { min-width: 150px; }   /* LAN 255.255.255.255 */
+    .m.wan  { min-width: 152px; }   /* WAN 255.255.255.255 */
 
     /* 1px hairline divider between metrics */
     .m + .m::before {
