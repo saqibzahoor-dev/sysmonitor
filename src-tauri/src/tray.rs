@@ -48,6 +48,20 @@ pub fn create_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         MenuItem::with_id(app, "always_on_top", "Always on Top", true, None::<&str>)?;
     let retry_sensors =
         MenuItem::with_id(app, "retry_sensors", "Retry sensors", true, None::<&str>)?;
+
+    // "Restart as administrator" — shown when NOT elevated so users can
+    // get AMD/Intel CPU temperature without manually quitting first.
+    // When already elevated, item is replaced with a "(running elevated)"
+    // label so the user knows they have full sensor access.
+    let elevated = crate::appbar::is_elevated();
+    let admin_label = if elevated {
+        "✓ Running as administrator"
+    } else {
+        "Restart as administrator…"
+    };
+    let restart_admin =
+        MenuItem::with_id(app, "restart_admin", admin_label, !elevated, None::<&str>)?;
+
     let sep2 = PredefinedMenuItem::separator(app)?;
     let about = MenuItem::with_id(app, "about", "About SysMonitor", true, None::<&str>)?;
     let sep3 = PredefinedMenuItem::separator(app)?;
@@ -65,6 +79,7 @@ pub fn create_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
             &position_menu,
             &always_on_top,
             &retry_sensors,
+            &restart_admin,
             &sep2,
             &about,
             &sep3,
@@ -99,6 +114,13 @@ pub fn create_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                 "retry_sensors" => {
                     app.emit("retry-sensors", ()).ok();
                 }
+                "restart_admin" => {
+                    // Self-restart elevated. lib.rs listens for this event,
+                    // calls Win32 ShellExecuteW("runas") to spawn a new
+                    // elevated instance, then exits THIS instance so the
+                    // single-instance lock releases and elevation succeeds.
+                    app.emit("restart-as-admin", ()).ok();
+                }
                 "cpos_tl" => { app.emit("set-compact-position", "top-left").ok(); }
                 "cpos_tr" => { app.emit("set-compact-position", "top-right").ok(); }
                 "cpos_bl" => { app.emit("set-compact-position", "bottom-left").ok(); }
@@ -107,10 +129,9 @@ pub fn create_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                     app.exit(0);
                 }
                 "about" => {
-                    if let Some(w) = app.get_webview_window("main") {
-                        w.show().ok();
-                        w.set_focus().ok();
-                    }
+                    // Main window is lazy — ensure it exists by switching
+                    // to full mode, which lib.rs builds on demand.
+                    app.emit("set-mode", "full").ok();
                     app.emit("show-about", ()).ok();
                 }
                 // Legacy position presets — affect the main (full) window

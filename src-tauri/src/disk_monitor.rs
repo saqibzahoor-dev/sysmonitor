@@ -95,9 +95,60 @@ pub fn total_free_bytes(disks: &[DiskEntry]) -> u64 {
 }
 
 #[cfg(target_os = "windows")]
+mod wmi_cache {
+    use std::cell::RefCell;
+    use wmi::{COMLibrary, WMIConnection};
+
+    // Thread-local cached WMI connection. WMIConnection's COM raw pointer
+    // isn't Send, but DiskMonitor::poll() always runs on the dedicated
+    // monitor thread (and on the single test thread in cargo test), so a
+    // thread-local cache is correct AND avoids fighting the Send trait.
+    //
+    // PERF: was opening a fresh COMLibrary + WMIConnection EVERY tick
+    // (~50-150ms per call). Now opened once per thread, reused forever.
+    thread_local! {
+        static WMI: RefCell<Option<WMIConnection>> = const { RefCell::new(None) };
+        static INIT_FAILED: RefCell<bool> = const { RefCell::new(false) };
+    }
+
+    pub fn with_wmi<F, T>(f: F) -> Option<T>
+    where
+        F: FnOnce(&WMIConnection) -> Option<T>,
+    {
+        // Lazy-init on first call.
+        WMI.with(|cell| -> Option<T> {
+            if cell.borrow().is_none() {
+                if INIT_FAILED.with(|f| *f.borrow()) {
+                    return None;
+                }
+                let init = (|| -> Option<WMIConnection> {
+                    let com = COMLibrary::new().ok()?;
+                    WMIConnection::new(com).ok()
+                })();
+                match init {
+                    Some(c) => *cell.borrow_mut() = Some(c),
+                    None => {
+                        INIT_FAILED.with(|f| *f.borrow_mut() = true);
+                        return None;
+                    }
+                }
+            }
+            let borrowed = cell.borrow();
+            let conn = borrowed.as_ref()?;
+            f(conn)
+        })
+    }
+
+    /// Drop the cached connection so the next call re-initializes — used
+    /// when a query fails to recover from transient errors.
+    pub fn invalidate() {
+        WMI.with(|cell| *cell.borrow_mut() = None);
+    }
+}
+
+#[cfg(target_os = "windows")]
 fn read_disk_io_wmi() -> Option<HashMap<String, (u64, u64)>> {
     use serde::Deserialize;
-    use wmi::{COMLibrary, WMIConnection};
 
     #[derive(Deserialize, Debug)]
     #[serde(rename_all = "PascalCase")]
@@ -107,21 +158,27 @@ fn read_disk_io_wmi() -> Option<HashMap<String, (u64, u64)>> {
         disk_write_bytes_persec: u64,
     }
 
-    let com = COMLibrary::new().ok()?;
-    let conn = WMIConnection::new(com).ok()?;
-    let rows: Vec<PerfDisk> = conn
-        .raw_query(
+    wmi_cache::with_wmi(|conn| {
+        let rows_result: Result<Vec<PerfDisk>, _> = conn.raw_query(
             "SELECT Name, DiskReadBytesPersec, DiskWriteBytesPersec FROM Win32_PerfRawData_PerfDisk_LogicalDisk",
-        )
-        .ok()?;
-    let mut map = HashMap::new();
-    for r in rows {
-        if r.name == "_Total" || r.name.len() < 2 {
-            continue;
+        );
+        match rows_result {
+            Ok(rows) => {
+                let mut map = HashMap::new();
+                for r in rows {
+                    if r.name == "_Total" || r.name.len() < 2 {
+                        continue;
+                    }
+                    map.insert(r.name, (r.disk_read_bytes_persec, r.disk_write_bytes_persec));
+                }
+                Some(map)
+            }
+            Err(_) => {
+                wmi_cache::invalidate();
+                None
+            }
         }
-        map.insert(r.name, (r.disk_read_bytes_persec, r.disk_write_bytes_persec));
-    }
-    Some(map)
+    })
 }
 
 #[cfg(not(target_os = "windows"))]

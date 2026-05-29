@@ -23,6 +23,7 @@ pub fn compact_menu_layout() -> Vec<MenuEntry> {
         MenuEntry::Item("mode_full", "▢  Open Full Window"),
         MenuEntry::Item("always_on_top", "⊞  Always on Top"),
         MenuEntry::Item("retry_sensors", "↻  Retry Sensors"),
+        MenuEntry::Item("restart_admin", "⚡  Restart as Administrator"),
         MenuEntry::Separator,
         MenuEntry::Item("quit", "✕  Quit"),
     ]
@@ -71,6 +72,25 @@ mod tests {
         let items = compact_menu_layout();
         let seps = items.iter().filter(|e| matches!(e, MenuEntry::Separator)).count();
         assert_eq!(seps, 2);
+    }
+
+    #[test]
+    fn layout_contains_restart_admin() {
+        // Discoverable from the right-click of the bar — without this,
+        // users have to find the system-tray icon to get to admin mode
+        // (which is needed for AMD CPU temperature on Windows).
+        let items = compact_menu_layout();
+        assert!(items.iter().any(|e| matches!(e, MenuEntry::Item("restart_admin", _))));
+    }
+
+    #[test]
+    fn restart_admin_is_before_quit() {
+        // Quit should be the very last item; restart_admin must appear
+        // before it so the menu reads "actions ... separator ... quit".
+        let items = compact_menu_layout();
+        let restart_idx = items.iter().position(|e| matches!(e, MenuEntry::Item("restart_admin", _))).expect("must have restart_admin");
+        let quit_idx = items.iter().position(|e| matches!(e, MenuEntry::Item("quit", _))).expect("must have quit");
+        assert!(restart_idx < quit_idx, "restart_admin must come before quit");
     }
 
     #[test]

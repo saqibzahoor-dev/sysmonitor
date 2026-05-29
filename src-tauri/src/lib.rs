@@ -17,7 +17,7 @@ pub mod settings;
 pub mod system_info;
 pub mod tray;
 
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use tauri::{AppHandle, Emitter, Listener, Manager};
 
 pub struct AppState {
@@ -36,6 +36,12 @@ pub struct AppState {
     pub proc: Mutex<process_monitor::ProcessMonitor>,
     pub lhm: lhm_bridge::LhmBridge,
     pub sys_info: system_info::SystemInfoCache,
+
+    /// In-memory cache of `display_mode` so the visibility sentinel doesn't
+    /// have to re-read + parse settings.json from disk on every tick (was
+    /// 10 file reads/sec — measurable CPU + disk burn). Single writer is
+    /// set_display_mode/set_compact_position; many readers (sentinel).
+    pub display_mode: Arc<RwLock<String>>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -128,6 +134,10 @@ fn set_compact_position(app: AppHandle, corner: String) -> Result<(), String> {
     s.compact_y = y as f64;
     s.display_mode = "compact_float".to_string();
     settings::save_settings(&s)?;
+
+    // Also update the in-memory cache the sentinel reads
+    let st = app.state::<AppState>();
+    *st.display_mode.write().unwrap() = "compact_float".to_string();
     Ok(())
 }
 
@@ -164,6 +174,27 @@ fn save_compact_position(app: AppHandle) -> Result<(), String> {
     settings::save_settings(&s)
 }
 
+/// Build the full (7-tab) main window on demand. Previously this was
+/// declared in tauri.conf.json `windows` and got created at app startup
+/// even though it stayed hidden — that booted ~6 WebView2 helper processes
+/// and ~250MB of RAM for the 95% of users who only use the compact bar.
+///
+/// Same dimensions and chrome flags as the old static declaration.
+fn build_main_window(app: &AppHandle) -> tauri::Result<tauri::WebviewWindow> {
+    use tauri::{WebviewUrl, WebviewWindowBuilder};
+    WebviewWindowBuilder::new(app, "main", WebviewUrl::App("/".into()))
+        .title("SysMonitor")
+        .inner_size(420.0, 440.0)
+        .decorations(false)
+        .always_on_top(true)
+        .transparent(false)
+        .resizable(false)
+        .skip_taskbar(true)
+        .center()
+        .visible(false)
+        .build()
+}
+
 /// Show a NATIVE OS-level context menu on right-click of the compact bar.
 /// The previous in-page Svelte menu got clipped because the compact window
 /// is only ~28px tall; a native menu is rendered by the OS and isn't
@@ -174,7 +205,7 @@ fn save_compact_position(app: AppHandle) -> Result<(), String> {
 /// dispatched by ID.
 #[tauri::command]
 fn show_compact_menu(app: AppHandle) -> Result<(), String> {
-    use tauri::menu::{ContextMenu, MenuBuilder, MenuItemBuilder, PredefinedMenuItem};
+    use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem};
     use tauri::Manager;
 
     let webview = app
@@ -203,12 +234,19 @@ fn show_compact_menu(app: AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 fn set_display_mode(app: AppHandle, mode: String) -> Result<(), String> {
+    // Update the in-memory cache FIRST so the visibility sentinel reads
+    // the new mode on its next tick (within ~500ms), before any window
+    // operations below.
+    {
+        let st = app.state::<AppState>();
+        *st.display_mode.write().unwrap() = mode.clone();
+    }
+
     // Always unregister any existing AppBar first
     if let Some(hwnd) = appbar_slot().lock().unwrap().take() {
         appbar::unregister(hwnd);
     }
 
-    let main = app.get_webview_window("main");
     let compact = app.get_webview_window("compact");
 
     match mode.as_str() {
@@ -216,13 +254,21 @@ fn set_display_mode(app: AppHandle, mode: String) -> Result<(), String> {
             if let Some(c) = &compact {
                 c.hide().ok();
             }
-            if let Some(m) = &main {
-                m.show().ok();
-                m.set_focus().ok();
-            }
+            // Lazy-create the main (full) window on first show. Keeping it
+            // out of tauri.conf.json saves ~6 WebView2 helper processes and
+            // ~250MB RAM for the 95% of users who only ever use the bar.
+            let main = match app.get_webview_window("main") {
+                Some(w) => w,
+                None => match build_main_window(&app) {
+                    Ok(w) => w,
+                    Err(e) => return Err(format!("create main window: {e}")),
+                },
+            };
+            main.show().ok();
+            main.set_focus().ok();
         }
         "compact_appbar" => {
-            if let Some(m) = &main {
+            if let Some(m) = app.get_webview_window("main") {
                 m.hide().ok();
             }
             if let Some(c) = &compact {
@@ -240,7 +286,7 @@ fn set_display_mode(app: AppHandle, mode: String) -> Result<(), String> {
             }
         }
         "compact_float" => {
-            if let Some(m) = &main {
+            if let Some(m) = app.get_webview_window("main") {
                 m.hide().ok();
             }
             if let Some(c) = &compact {
@@ -303,7 +349,7 @@ fn set_display_mode(app: AppHandle, mode: String) -> Result<(), String> {
             }
         }
         "tray_only" => {
-            if let Some(m) = &main {
+            if let Some(m) = app.get_webview_window("main") {
                 m.hide().ok();
             }
             if let Some(c) = &compact {
@@ -336,13 +382,20 @@ fn start_monitoring(app: AppHandle) {
             }
             let ping = state.cached_ping.lock().unwrap().clone();
 
-            if tick % 5 == 0 || tick == 1 {
+            // PERF: was every 5s — `netsh wlan show interfaces` +
+            // `ipconfig /all` are subprocess spawns (~50-100ms each, run
+            // synchronously). Local IP, SSID, gateway, DNS, MAC almost
+            // never change inside a session, so 30s is plenty. Public IP
+            // is cached separately for 5min inside the collector.
+            if tick % 30 == 0 || tick == 1 {
                 let info = state.net_info.lock().unwrap().collect();
                 *state.cached_info.lock().unwrap() = info;
             }
             let net_info = state.cached_info.lock().unwrap().clone();
 
-            if tick % 5 == 0 || tick == 1 {
+            // PERF: was every 5s — netstat enumerates EVERY TCP connection.
+            // 15s gives a near-live count without burning CPU.
+            if tick % 15 == 0 || tick == 1 {
                 let conn = settings::get_active_connections();
                 *state.cached_connections.lock().unwrap() = conn;
             }
@@ -415,6 +468,31 @@ pub fn run() {
     settings::migrate_v1_settings_if_present();
 
     tauri::Builder::default()
+        // CRITICAL: single-instance lock MUST be the first plugin registered.
+        // Without it, a second launch (e.g. user clicks "Run as administrator"
+        // while a non-elevated instance is already running) tries to spin up
+        // its own WebView2 against the same %LOCALAPPDATA%/com.sysmonitor.app
+        // /EBWebView user-data folder. WebView2 cannot share that folder
+        // across processes — the second launch fails silently and exits.
+        // User sees "Run as admin did nothing" because the bar was already
+        // visible from the existing instance.
+        //
+        // With this plugin, the second launch detects the lock, fires this
+        // callback in the *existing* process, and exits cleanly. We bring the
+        // existing bar to the front so the user gets visible feedback.
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            use tauri::Manager;
+            if let Some(c) = app.get_webview_window("compact") {
+                let _ = c.show();
+                let _ = c.set_always_on_top(true);
+                let _ = c.set_focus();
+            }
+            if let Some(m) = app.get_webview_window("main") {
+                if m.is_visible().unwrap_or(false) {
+                    let _ = m.set_focus();
+                }
+            }
+        }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
         // App-wide menu event handler — fires for both tray menu and any
@@ -432,6 +510,7 @@ pub fn run() {
                 "mode_float" => { app.emit("set-mode", "compact_float").ok(); }
                 "mode_tray" => { app.emit("set-mode", "tray_only").ok(); }
                 "retry_sensors" => { app.emit("retry-sensors", ()).ok(); }
+                "restart_admin" => { app.emit("restart-as-admin", ()).ok(); }
                 "always_on_top" => {
                     if let Some(c) = app.get_webview_window("compact") {
                         if let Ok(cur) = c.is_always_on_top() {
@@ -461,6 +540,9 @@ pub fn run() {
             proc: Mutex::new(process_monitor::ProcessMonitor::new()),
             lhm: lhm_bridge::LhmBridge::new(),
             sys_info: system_info::SystemInfoCache::default(),
+            display_mode: Arc::new(RwLock::new(
+                settings::load_settings().display_mode,
+            )),
         })
         .invoke_handler(tauri::generate_handler![
             get_settings,
@@ -506,44 +588,84 @@ pub fn run() {
                 let _ = set_compact_position(h_pos.clone(), corner);
             });
 
+            // Listen for "Restart as administrator" — Win32 ShellExecuteW
+            // with "runas" verb spawns an elevated copy, then we exit so
+            // the single-instance lock releases and the elevated instance
+            // takes over. If user declines UAC, we stay running.
+            let h_admin = handle.clone();
+            handle.listen("restart-as-admin", move |_| {
+                let exe = match std::env::current_exe() {
+                    Ok(p) => p,
+                    Err(e) => { eprintln!("current_exe failed: {e}"); return; }
+                };
+                match appbar::restart_as_admin(&exe) {
+                    Ok(()) => {
+                        // Give the new process a beat to grab the single-
+                        // instance lock before we exit ours.
+                        let h2 = h_admin.clone();
+                        tauri::async_runtime::spawn(async move {
+                            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                            h2.exit(0);
+                        });
+                    }
+                    Err(e) => {
+                        eprintln!("restart_as_admin failed: {e}");
+                        // User likely declined UAC — keep running.
+                    }
+                }
+            });
+
             // Start the per-second monitoring loop
             start_monitoring(handle.clone());
 
             // ===== COMPACT BAR VISIBILITY SENTINEL =====
             // Two layers of defense against the bar disappearing:
             //
-            // 1) Apply WS_EX_NOACTIVATE one time (done below in setup). This
-            //    prevents the window from EVER becoming the active foreground
-            //    window when clicked. Windows' tool-window auto-hide behavior
-            //    on shell activation is triggered by the activation chain, so
-            //    a window that can never activate doesn't get auto-hidden.
+            // 1) WS_EX_NOACTIVATE applied once at startup (below). Prevents
+            //    the window from EVER becoming foreground, so Windows'
+            //    tool-window auto-hide on shell activation doesn't fire.
             //
-            // 2) 100ms-polled sentinel that re-asserts visibility + topmost.
-            //    Belt and suspenders — if anything still slips through the
-            //    NOACTIVATE defense, the bar reappears within 100ms (visually
-            //    instant). Reads display_mode and only restores for compact
-            //    modes — respects tray_only/full.
+            // 2) Polled sentinel. Belt-and-suspenders — restores visibility
+            //    if anything slips through the NOACTIVATE defense.
+            //
+            // PERF: was 100ms polling + settings::load_settings() (file I/O)
+            //       per tick = 10 disk reads/sec + 10 JSON parses/sec.
+            //       Now 500ms polling reading from an in-memory RwLock that
+            //       set_display_mode/set_compact_position update. 500ms is
+            //       still visually instant for "the bar came back" and is
+            //       20x cheaper than the old 100ms-with-disk-read.
             const MIN_W: u32 = 200;
             const MIN_H: u32 = 24;
             let h_pin = handle.clone();
+            let mode_cache = handle.state::<AppState>().display_mode.clone();
             tauri::async_runtime::spawn(async move {
                 loop {
-                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-                    let mode = settings::load_settings().display_mode;
-                    let should_be_visible =
-                        mode == "compact_float" || mode == "compact_appbar";
+                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                    // Read from in-memory cache, NOT from settings.json
+                    let should_be_visible = {
+                        let mode = mode_cache.read().unwrap();
+                        mode.as_str() == "compact_float" || mode.as_str() == "compact_appbar"
+                    };
                     if !should_be_visible {
                         continue;
                     }
                     let Some(c) = h_pin.get_webview_window("compact") else { continue };
 
-                    if !c.is_visible().unwrap_or(true) {
+                    let visible = c.is_visible().unwrap_or(true);
+                    let minimized = c.is_minimized().unwrap_or(false);
+
+                    if !visible {
                         let _ = c.show();
                     }
-                    if c.is_minimized().unwrap_or(false) {
+                    if minimized {
                         let _ = c.unminimize();
                     }
-                    let _ = c.set_always_on_top(true);
+                    // Only call set_always_on_top if it's NOT already topmost.
+                    // Each call hits Win32 SetWindowPos which generates
+                    // WM_WINDOWPOSCHANGED — wasteful at 10Hz unconditionally.
+                    if !c.is_always_on_top().unwrap_or(true) {
+                        let _ = c.set_always_on_top(true);
+                    }
 
                     if let Ok(size) = c.outer_size() {
                         // Snap back if too small (bug guard)
@@ -551,10 +673,9 @@ pub fn run() {
                             let _ = c.set_size(tauri::LogicalSize::new(620u32, 28u32));
                             let _ = c.show();
                         }
-                        // Snap back if too tall (window grew beyond bar height somehow)
+                        // Snap back if too tall (window grew beyond bar height)
                         const MAX_H_PHYS: u32 = 120;
                         if size.height > MAX_H_PHYS {
-                            // Preserve width, force height down to 28 logical
                             let w_logical = (size.width as f64 / 1.0).max(620.0) as u32;
                             let _ = c.set_size(tauri::LogicalSize::new(w_logical, 28u32));
                         }

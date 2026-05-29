@@ -20,17 +20,34 @@ pub struct ProcessMonitor {
     sys: System,
 }
 
+/// We only display: name, CPU %, memory. Use the minimal refresh kind that
+/// gives us just that — `everything()` additionally pulls per-process disk
+/// I/O, network I/O, executable path, command line, environment variables,
+/// user info, and open file count. On a typical Windows box with ~500
+/// processes, the full pull is the single biggest CPU cost in the tick loop.
+fn refresh_kind_min() -> ProcessRefreshKind {
+    // sysinfo 0.32 API: start from nothing, opt into just cpu + memory.
+    ProcessRefreshKind::new().with_cpu().with_memory()
+}
+
 impl ProcessMonitor {
     pub fn new() -> Self {
         let mut sys = System::new_with_specifics(
-            RefreshKind::new().with_processes(ProcessRefreshKind::everything()),
+            RefreshKind::new().with_processes(refresh_kind_min()),
         );
-        sys.refresh_processes(ProcessesToUpdate::All, true);
+        // Initial refresh must use `true` (refresh_users) once so name
+        // resolution works; subsequent polls can pass false.
+        sys.refresh_processes_specifics(ProcessesToUpdate::All, true, refresh_kind_min());
         Self { sys }
     }
 
     pub fn poll(&mut self, top_n: usize) -> ProcStats {
-        self.sys.refresh_processes(ProcessesToUpdate::All, true);
+        // PERF: was refresh_processes(All, true) with everything() — pulled
+        // disk I/O, network I/O, exec path, cmdline, env, users, files for
+        // every process on the system every second. Now: cpu + memory only,
+        // skip user refresh (users rarely change).
+        self.sys
+            .refresh_processes_specifics(ProcessesToUpdate::All, false, refresh_kind_min());
         let mut all: Vec<ProcInfo> = self
             .sys
             .processes()

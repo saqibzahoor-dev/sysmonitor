@@ -67,7 +67,10 @@ impl NetworkInfoCollector {
             info.mac = ipconfig.3;
         }
 
-        if self.last_public_ip_fetch.elapsed() > std::time::Duration::from_secs(300)
+        // 10min cache — public IP only changes on ISP renew or reconnect.
+        // Re-fetching every 5min cost a network round-trip + DNS for no
+        // user-visible benefit.
+        if self.last_public_ip_fetch.elapsed() > std::time::Duration::from_secs(600)
             || self.cached_public_ip.is_none()
         {
             info.public_ip = Self::fetch_public_ip();

@@ -160,6 +160,86 @@ pub fn apply_widget_styles(hwnd_isize: isize) {
 #[cfg(not(target_os = "windows"))]
 pub fn apply_widget_styles(_: isize) {}
 
+/// Returns true if the current process is running with elevated (admin) privileges.
+/// Required for the LibreHardwareMonitor sidecar to read AMD/Intel ring-0 CPU
+/// thermal sensors via MSRs.
+#[cfg(target_os = "windows")]
+pub fn is_elevated() -> bool {
+    use windows::Win32::Foundation::{CloseHandle, HANDLE};
+    use windows::Win32::Security::{GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY};
+    use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+
+    unsafe {
+        let mut token: HANDLE = HANDLE::default();
+        if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token).is_err() {
+            return false;
+        }
+        let mut elevation = TOKEN_ELEVATION::default();
+        let mut size: u32 = 0;
+        let ok = GetTokenInformation(
+            token,
+            TokenElevation,
+            Some(&mut elevation as *mut _ as *mut _),
+            std::mem::size_of::<TOKEN_ELEVATION>() as u32,
+            &mut size,
+        );
+        let _ = CloseHandle(token);
+        ok.is_ok() && elevation.TokenIsElevated != 0
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn is_elevated() -> bool { false }
+
+/// Restart the current executable elevated via UAC "runas" verb.
+/// Returns Ok(()) once the new process is launched; the caller should then
+/// exit so the elevated instance takes over.
+///
+/// NOTE: This triggers a UAC prompt. If the user declines, the new process
+/// never starts and Err is returned — callers should NOT exit themselves in
+/// that case (the existing non-elevated instance should keep running).
+#[cfg(target_os = "windows")]
+pub fn restart_as_admin(exe_path: &std::path::Path) -> Result<(), String> {
+    use windows::core::PCWSTR;
+    use windows::Win32::UI::Shell::{ShellExecuteW, SE_ERR_ACCESSDENIED};
+    use windows::Win32::UI::WindowsAndMessaging::SW_NORMAL;
+
+    let exe_wide: Vec<u16> = exe_path
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    let verb_wide: Vec<u16> = "runas\0".encode_utf16().collect();
+
+    let result = unsafe {
+        ShellExecuteW(
+            None,
+            PCWSTR(verb_wide.as_ptr()),
+            PCWSTR(exe_wide.as_ptr()),
+            PCWSTR::null(),
+            PCWSTR::null(),
+            SW_NORMAL,
+        )
+    };
+    // ShellExecuteW returns HINSTANCE; values > 32 indicate success.
+    let code = result.0 as isize;
+    if code > 32 {
+        Ok(())
+    } else if code as i32 == SE_ERR_ACCESSDENIED as i32 {
+        Err("user declined UAC prompt".to_string())
+    } else {
+        Err(format!("ShellExecuteW failed with code {code}"))
+    }
+}
+
+#[cfg(target_os = "windows")]
+use std::os::windows::ffi::OsStrExt;
+
+#[cfg(not(target_os = "windows"))]
+pub fn restart_as_admin(_: &std::path::Path) -> Result<(), String> {
+    Err("admin restart only supported on Windows".to_string())
+}
+
 pub struct AppBarGuard {
     pub hwnd: isize,
     pub active: bool,
