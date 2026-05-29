@@ -34,7 +34,7 @@ Real-time PC monitoring widget for Windows. A pinned, always-on-top status bar s
 | Format | Size | Direct link |
 |---|---|---|
 | NSIS installer *(recommended)* | 3.9 MB | [SysMonitor_2.0.0_x64-setup.exe](https://github.com/saqibzahoor-dev/sysmonitor/releases/latest/download/SysMonitor_2.0.0_x64-setup.exe) |
-| MSI installer | 5.6 MB | [SysMonitor_2.0.0_x64.msi](https://github.com/saqibzahoor-dev/sysmonitor/releases/latest/download/SysMonitor_2.0.0_x64.msi) |
+| MSI installer | 5.7 MB | [SysMonitor_2.0.0_x64_en-US.msi](https://github.com/saqibzahoor-dev/sysmonitor/releases/latest/download/SysMonitor_2.0.0_x64_en-US.msi) |
 | All releases / changelog | — | [github.com/saqibzahoor-dev/sysmonitor/releases](https://github.com/saqibzahoor-dev/sysmonitor/releases) |
 
 **System requirements:** Windows 10 or 11 (64-bit), .NET Framework 4.8 (preinstalled on Win10/11). ~25 MB on disk after install.
@@ -64,13 +64,15 @@ Real-time PC monitoring widget for Windows. A pinned, always-on-top status bar s
 
 CPU temperature requires **administrator privileges** for the LibreHardwareMonitor kernel driver to access AMD/Intel ring-0 thermal sensors. GPU temperature works without admin.
 
-1. **Quit** SysMonitor if running (right-click tray → Quit).
-2. Open File Explorer → navigate to `%LOCALAPPDATA%\SysMonitor\`
-3. **Right-click** `sysmonitor.exe` → **Run as administrator**
-4. Accept the UAC prompt
-5. CPU temperature now shows in the bar and the CPU tab
+**The easy way (one click):**
 
-To make admin launch persistent, create a shortcut → Properties → Advanced → check **Run as administrator**.
+1. **Right-click the bar** (or the tray icon) → **Restart as Administrator**
+2. Accept the UAC prompt
+3. CPU temperature now shows in the bar and the CPU tab
+
+That's it — no manual quit-then-relaunch dance. The current instance hands off cleanly to the elevated one.
+
+**To make admin launch persistent at login:** create a shortcut to `%LOCALAPPDATA%\SysMonitor\sysmonitor.exe` → Properties → Advanced → check **Run as administrator** → drop the shortcut into `shell:startup`.
 
 ### How to uninstall
 
